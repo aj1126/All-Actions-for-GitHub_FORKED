@@ -28,3 +28,7 @@
 
 .all-actions-dot[hidden],
 .all-actions-count[hidden] { display: none; }
+
+/* https://github.com/?all-actions: hide GitHub's page body; the list renders in its place. */
+html[data-all-actions-view] .application-main,
+html[data-all-actions-view] body main { display: none !important; }

@@ -1,0 +1,96 @@
+import { getUser, TokenError } from "./lib/github.js";
+import {
+  getToken, setToken, clearToken, getLogin, setLogin, getSettings, setSettings, updateBadge,
+} from "./lib/storage.js";
+
+const VIEW_URL = "https://github.com/?all-actions";
+const TOKEN_URL =
+  "https://github.com/settings/personal-access-tokens/new?" +
+  new URLSearchParams({
+    name: "All Actions for GitHub",
+    description: "Read-only access to workflow runs for the All Actions for GitHub browser extension.",
+    expires_in: "90",
+    actions: "read",
+  });
+
+const $ = (id) => document.getElementById(id);
+
+function setStatus(text, kind = "") {
+  $("token-status").textContent = text;
+  $("token-status").className = `status ${kind}`;
+}
+
+async function showConnected() {
+  const [token, login] = await Promise.all([getToken(), getLogin()]);
+  $("disconnect").hidden = !token;
+  $("heading").textContent = token ? "Settings" : "Connect your GitHub account";
+  if (token) setStatus(`Connected as @${login}. Paste a new token to replace it.`, "ok");
+}
+
+async function onTokenSubmit(e) {
+  e.preventDefault();
+  const token = $("token-input").value.trim();
+  if (!token) {
+    setStatus("Paste the token GitHub showed you after you generated it.", "err");
+    return;
+  }
+  $("token-save").disabled = true;
+  setStatus("Checking the token with GitHub…");
+  try {
+    const user = await getUser(token);
+    await setToken(token);
+    await setLogin(user.login);
+    // Results from a previous token may belong to another account.
+    await chrome.storage.local.remove("snapshot");
+    await updateBadge(null);
+    $("token-input").value = "";
+    await showConnected();
+    setStatus(`Connected as @${user.login}.`, "ok");
+  } catch (err) {
+    setStatus(
+      err instanceof TokenError
+        ? "GitHub didn't accept that token. Check you copied all of it, then try again."
+        : `Couldn't reach GitHub: ${err.message}`,
+      "err",
+    );
+  } finally {
+    $("token-save").disabled = false;
+  }
+}
+
+async function onScopeChange() {
+  const settings = await getSettings();
+  await setSettings({ ...settings, scheduledOnly: $("scope-scheduled").checked });
+  await chrome.storage.local.remove("snapshot"); // so the next view load fetches with the new setting
+}
+
+async function onDone() {
+  if (!(await getToken())) {
+    setStatus("Connect a token first (step 2).", "err");
+    return;
+  }
+  location.href = VIEW_URL;
+}
+
+async function onDisconnect() {
+  await clearToken();
+  await updateBadge(null);
+  $("token-input").value = "";
+  setStatus("Disconnected. The token was removed from this browser. You can also delete it on GitHub.");
+  await showConnected();
+}
+
+async function init() {
+  $("token-link").href = TOKEN_URL;
+  const settings = await getSettings();
+  $("scope-scheduled").checked = settings.scheduledOnly;
+  $("scope-all").checked = !settings.scheduledOnly;
+  $("token-form").addEventListener("submit", onTokenSubmit);
+  $("scope-scheduled").addEventListener("change", onScopeChange);
+  $("scope-all").addEventListener("change", onScopeChange);
+  $("done").addEventListener("click", onDone);
+  $("disconnect").addEventListener("click", onDisconnect);
+  await showConnected();
+}
+
+init();

@@ -1,22 +1,62 @@
-import { getSnapshot, updateBadge } from "./lib/storage.js";
+import { loadSnapshot, TokenError, RateLimitError } from "./lib/github.js";
+import { getToken, getSettings, getSnapshot, setSnapshot, updateBadge } from "./lib/storage.js";
 
-const DASHBOARD = chrome.runtime.getURL("src/dashboard.html");
+export const VIEW_URL = "https://github.com/?all-actions";
+const REFRESH_MINUTES = 30;
 
-// Toolbar icon opens the All actions page.
+let running = null;
+
+/** Fetch fresh results. Progress and errors go to storage so every open view can show them. */
+function refresh() {
+  if (running) return running;
+  running = (async () => {
+    const token = await getToken();
+    if (!token) return;
+    const { scheduledOnly } = await getSettings();
+    await chrome.storage.local.set({ refreshState: { running: true, done: 0, total: 0, at: Date.now() } });
+    try {
+      const snapshot = await loadSnapshot(token, {
+        scheduledOnly,
+        onProgress: (done, total) => chrome.storage.local.set({ refreshState: { running: true, done, total, at: Date.now() } }),
+      });
+      await setSnapshot(snapshot);
+      await chrome.storage.local.set({ refreshState: { running: false } });
+    } catch (e) {
+      const kind = e instanceof TokenError ? "token" : e instanceof RateLimitError ? "rate" : "other";
+      await chrome.storage.local.set({
+        refreshState: { running: false, error: { kind, message: e.message, resetAt: e.resetAt ?? null } },
+      });
+    }
+  })().finally(() => {
+    running = null;
+  });
+  return running;
+}
+
+// Toolbar icon opens the All actions page on github.com.
 chrome.action.onClicked.addListener(() => {
-  chrome.tabs.create({ url: DASHBOARD });
+  chrome.tabs.create({ url: VIEW_URL });
 });
 
-// The injected links on github.com ask us to open the page in the same tab.
-chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message?.type !== "open-dashboard") return;
-  if (message.newTab || !sender.tab?.id) chrome.tabs.create({ url: DASHBOARD });
-  else chrome.tabs.update(sender.tab.id, { url: DASHBOARD });
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "refresh") refresh();
+  if (message?.type === "open-settings") chrome.runtime.openOptionsPage();
 });
 
-// Restore the badge after the browser restarts.
-chrome.runtime.onStartup.addListener(async () => updateBadge(await getSnapshot()));
-chrome.runtime.onInstalled.addListener(async (details) => {
+// Check in the background so the badge stays current.
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "refresh") refresh();
+});
+
+async function setUp() {
+  await chrome.alarms.create("refresh", { periodInMinutes: REFRESH_MINUTES });
+  // A refresh interrupted by a browser restart would otherwise look stuck.
+  await chrome.storage.local.set({ refreshState: { running: false } });
   await updateBadge(await getSnapshot());
-  if (details.reason === "install") chrome.tabs.create({ url: DASHBOARD });
+}
+
+chrome.runtime.onStartup.addListener(setUp);
+chrome.runtime.onInstalled.addListener(async (details) => {
+  await setUp();
+  if (details.reason === "install") chrome.runtime.openOptionsPage();
 });

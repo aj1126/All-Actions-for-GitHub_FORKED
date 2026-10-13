@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   classify, summarizeRepoRuns, sortEntries, tally, filterEntries, sinceDate, formatDuration, formatWhen, formatAgo,
+  applySchedules, expectedRunAt, firstFailedStep, newProblems,
 } from "../src/lib/runs.js";
 
 const repo = { full_name: "me/blog", name: "blog", html_url: "https://github.com/me/blog", private: false };
@@ -69,7 +70,7 @@ test("tally and filterEntries", () => {
     { state: "passed", repo: { fullName: "me/b" }, workflow: { name: "Backup" } },
     { state: "running", repo: { fullName: "me/c" }, workflow: { name: "Sync" } },
   ];
-  assert.deepEqual(tally(entries), { failed: 1, running: 1, other: 0, passed: 1, total: 3 });
+  assert.deepEqual(tally(entries), { failed: 1, missed: 0, running: 1, other: 0, passed: 1, attention: 1, total: 3 });
   assert.equal(filterEntries(entries, "attention").length, 1);
   assert.equal(filterEntries(entries, "all").length, 3);
   assert.equal(filterEntries(entries, "passed").length, 1);
@@ -90,4 +91,69 @@ test("date and duration formatting", () => {
   assert.equal(formatAgo(20000), "just now");
   assert.equal(formatAgo(4 * 60000), "4 min ago");
   assert.equal(formatAgo(3 * 3600000), "3 h ago");
+});
+
+const wf = (id, extra = {}) => ({ id, name: `WF ${id}`, path: `.github/workflows/wf${id}.yml`, state: "active", created_at: "2026-01-01T00:00:00Z", ...extra });
+
+test("expectedRunAt allows a 90-minute grace period", () => {
+  const crons = ["0 5 * * *"];
+  assert.equal(expectedRunAt(crons, new Date("2026-10-13T06:00:00Z")).toISOString(), "2026-10-12T05:00:00.000Z");
+  assert.equal(expectedRunAt(crons, new Date("2026-10-13T06:31:00Z")).toISOString(), "2026-10-13T05:00:00.000Z");
+  assert.equal(expectedRunAt(["not a cron"], new Date()), null);
+});
+
+test("applySchedules flags a daily job with no run today as missed", () => {
+  const now = new Date("2026-10-13T12:00:00Z");
+  const runs = [run(1, 10, "2026-10-12T05:20:00Z", "completed", "success")];
+  const entries = applySchedules(summarizeRepoRuns(repo, runs), repo, [wf(10)], { ".github/workflows/wf10.yml": ["0 5 * * *"] }, now);
+  assert.equal(entries[0].state, "missed");
+  assert.equal(entries[0].note, "missed");
+  assert.equal(entries[0].expectedAt, "2026-10-13T05:00:00.000Z");
+});
+
+test("applySchedules leaves an on-time (even late-starting) run alone", () => {
+  const now = new Date("2026-10-13T12:00:00Z");
+  const runs = [run(1, 10, "2026-10-13T06:12:00Z", "completed", "failure")];
+  const [e] = applySchedules(summarizeRepoRuns(repo, runs), repo, [wf(10)], { ".github/workflows/wf10.yml": ["0 5 * * *"] }, now);
+  assert.equal(e.state, "failed");
+});
+
+test("applySchedules adds scheduled workflows with no recent runs", () => {
+  const now = new Date("2026-10-13T12:00:00Z");
+  const crons = { ".github/workflows/wf10.yml": ["0 5 * * *"], ".github/workflows/wf11.yml": ["0 5 * * *"], ".github/workflows/wf12.yml": ["0 5 * * *"] };
+  const workflows = [wf(10, { state: "disabled_inactivity" }), wf(11, { state: "disabled_manually" }), wf(12)];
+  const entries = applySchedules([], repo, workflows, crons, now);
+  assert.deepEqual(entries.map((e) => [e.workflow.id, e.state, e.note]), [[10, "missed", "inactive"], [11, "other", "disabled"], [12, "missed", "missed"]]);
+});
+
+test("applySchedules ignores workflows without a schedule and ones created after the due time", () => {
+  const now = new Date("2026-10-13T12:00:00Z");
+  const entries = applySchedules([], repo, [wf(10), wf(11, { created_at: "2026-10-13T09:00:00Z" })], { ".github/workflows/wf11.yml": ["0 5 * * *"] }, now);
+  assert.deepEqual(entries.map((e) => [e.workflow.id, e.state]), [[11, "other"]]);
+});
+
+test("attention filter includes missed", () => {
+  const entries = [
+    { state: "missed", repo: { fullName: "me/a" }, workflow: { name: "x" } },
+    { state: "failed", repo: { fullName: "me/b" }, workflow: { name: "y" } },
+    { state: "passed", repo: { fullName: "me/c" }, workflow: { name: "z" } },
+  ];
+  assert.equal(filterEntries(entries, "attention").length, 2);
+  assert.equal(sortEntries(entries.map((e) => ({ ...e, latest: null })))[1].state, "missed");
+});
+
+test("firstFailedStep finds the failing job and step", () => {
+  const jobs = [
+    { name: "lint", conclusion: "success", steps: [] },
+    { name: "build", conclusion: "failure", html_url: "u", steps: [{ name: "Checkout", conclusion: "success" }, { name: "Upload", conclusion: "failure" }] },
+  ];
+  assert.deepEqual(firstFailedStep(jobs), { job: "build", step: "Upload", url: "u" });
+  assert.equal(firstFailedStep([{ name: "a", conclusion: "success" }]), null);
+});
+
+test("newProblems only reports new failures and new misses", () => {
+  const mk = (key, state, id, expectedAt) => ({ key, state, latest: { id }, expectedAt });
+  const prev = { entries: [mk("a", "failed", 1), mk("b", "missed", 2, "t1"), mk("c", "passed", 3)] };
+  const cur = { entries: [mk("a", "failed", 1), mk("b", "missed", 2, "t2"), mk("c", "failed", 4), mk("d", "passed", 5)] };
+  assert.deepEqual(newProblems(prev, cur).map((e) => e.key), ["b", "c"]);
 });

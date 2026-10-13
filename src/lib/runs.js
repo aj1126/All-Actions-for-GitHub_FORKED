@@ -1,7 +1,16 @@
 // Pure helpers for turning raw workflow runs into rows for the All actions page.
 // No browser or network APIs here, so everything is unit-testable in Node.
 
-export const STATES = ["failed", "running", "other", "passed"];
+import { previousFire } from "./cron.js";
+
+export { describeCron } from "./cron.js";
+
+export const STATES = ["failed", "missed", "running", "other", "passed"];
+export const ATTENTION = new Set(["failed", "missed"]);
+
+// GitHub often starts scheduled runs late, especially at the top of the hour, so a run
+// only counts as missed once it's this late.
+export const MISSED_GRACE_MS = 90 * 60 * 1000;
 
 const FAILED = new Set(["failure", "timed_out", "startup_failure", "action_required"]);
 const OTHER = new Set(["cancelled", "skipped", "neutral", "stale"]);
@@ -31,6 +40,7 @@ export function summarizeRepoRuns(repo, runs, historySize = 10) {
   for (const [workflowId, list] of byWorkflow) {
     list.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
     const latest = list[0];
+    const lastScheduled = list.find((r) => r.event === "schedule");
     entries.push({
       key: `${repo.full_name}#${workflowId}`,
       repo: {
@@ -45,6 +55,7 @@ export function summarizeRepoRuns(repo, runs, historySize = 10) {
         url: `${repo.html_url}/actions/workflows/${(latest.path || "").split("/").pop()}`,
       },
       state: classify(latest),
+      lastScheduledAt: lastScheduled?.created_at ?? null,
       latest: {
         id: latest.id,
         url: latest.html_url,
@@ -66,27 +77,129 @@ export function summarizeRepoRuns(repo, runs, historySize = 10) {
   return entries;
 }
 
+/** When the schedule last should have fired, allowing for GitHub's delays; null if never. */
+export function expectedRunAt(crons, now) {
+  let best = null;
+  for (const cron of crons) {
+    let t;
+    try {
+      t = previousFire(cron, new Date(now.getTime() - MISSED_GRACE_MS));
+    } catch {
+      continue; // a cron we can't parse; GitHub would reject it too
+    }
+    if (t && (!best || t > best)) best = t;
+  }
+  return best;
+}
+
+/**
+ * Add schedule information to one repo's entries and flag missed runs.
+ *
+ * `workflows` comes from the workflows API (id, name, path, state, created_at).
+ * `crons` maps a workflow path to its cron strings, or is missing a path when the
+ * file couldn't be read. Workflows with a schedule but no recent runs get an entry
+ * too, so a job that silently stopped still shows up.
+ */
+export function applySchedules(entries, repo, workflows, crons, now) {
+  const byId = new Map(entries.map((e) => [e.workflow.id, e]));
+  for (const wf of workflows) {
+    const list = crons[wf.path];
+    if (!list?.length) continue;
+    let entry = byId.get(wf.id);
+    if (!entry) {
+      entry = {
+        key: `${repo.full_name}#${wf.id}`,
+        repo: { fullName: repo.full_name, name: repo.name, url: repo.html_url, private: Boolean(repo.private) },
+        workflow: { id: wf.id, name: wf.name || wf.path, url: `${repo.html_url}/actions/workflows/${wf.path.split("/").pop()}` },
+        state: "passed",
+        lastScheduledAt: null,
+        latest: null,
+        history: [],
+      };
+      byId.set(wf.id, entry);
+      entries.push(entry);
+    }
+    entry.crons = list;
+    entry.note = null;
+    if (wf.state === "disabled_manually") {
+      entry.state = "other";
+      entry.note = "disabled";
+      continue;
+    }
+    if (wf.state === "disabled_inactivity") {
+      entry.state = "missed";
+      entry.note = "inactive";
+      continue;
+    }
+    const expected = expectedRunAt(list, now);
+    if (!expected || (wf.created_at && expected < new Date(wf.created_at))) {
+      if (!entry.latest) entry.state = "other"; // scheduled, but not due yet
+      continue;
+    }
+    entry.expectedAt = expected.toISOString();
+    const last = entry.lastScheduledAt ? new Date(entry.lastScheduledAt) : null;
+    // Runs are created at or after their scheduled time, never before.
+    if (!last || last < new Date(expected.getTime() - 60 * 1000)) {
+      entry.state = "missed";
+      entry.note = "missed";
+    }
+  }
+  return entries;
+}
+
+function sortTime(e) {
+  return Date.parse(e.latest?.createdAt ?? e.expectedAt ?? 0) || 0;
+}
+
 /** Sort entries so problems come first, newest first within each state. */
 export function sortEntries(entries) {
   return [...entries].sort((a, b) => {
     const s = STATES.indexOf(a.state) - STATES.indexOf(b.state);
     if (s !== 0) return s;
-    return Date.parse(b.latest.createdAt) - Date.parse(a.latest.createdAt);
+    return sortTime(b) - sortTime(a);
   });
 }
 
-/** Count entries per state. */
+/** Count entries per state; `attention` is failed plus missed. */
 export function tally(entries) {
-  const counts = { failed: 0, running: 0, other: 0, passed: 0, total: entries.length };
-  for (const e of entries) counts[e.state] += 1;
+  const counts = { failed: 0, missed: 0, running: 0, other: 0, passed: 0, attention: 0, total: entries.length };
+  for (const e of entries) {
+    counts[e.state] += 1;
+    if (ATTENTION.has(e.state)) counts.attention += 1;
+  }
   return counts;
+}
+
+/** The first failed step of a run, from the run's jobs. */
+export function firstFailedStep(jobs) {
+  for (const job of jobs) {
+    if (job.conclusion !== "failure" && job.conclusion !== "timed_out") continue;
+    const step = (job.steps || []).find((s) => s.conclusion === "failure" || s.conclusion === "timed_out");
+    return { job: job.name, step: step?.name ?? null, url: job.html_url ?? null };
+  }
+  return null;
+}
+
+/**
+ * Entries that newly need attention compared with the previous results, for
+ * notifications: a new failed run, or a newly missed schedule.
+ */
+export function newProblems(previous, current) {
+  const before = new Map((previous?.entries ?? []).map((e) => [e.key, e]));
+  return current.entries.filter((e) => {
+    if (!ATTENTION.has(e.state)) return false;
+    const old = before.get(e.key);
+    if (!old || old.state !== e.state) return true;
+    if (e.state === "failed") return old.latest?.id !== e.latest?.id;
+    return old.expectedAt !== e.expectedAt;
+  });
 }
 
 /** Filter entries by a tab ("attention", "all", or a state) and a free-text query. */
 export function filterEntries(entries, tab, query = "") {
   const q = query.trim().toLowerCase();
   return entries.filter((e) => {
-    if (tab === "attention" && e.state !== "failed") return false;
+    if (tab === "attention" && !ATTENTION.has(e.state)) return false;
     if (tab !== "attention" && tab !== "all" && e.state !== tab) return false;
     if (!q) return true;
     return (

@@ -72,3 +72,4 @@ code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .radio { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
 .radio label { display: flex; gap: 8px; align-items: center; }
 .actions { display: flex; gap: 8px; align-items: center; }
+.check { display: flex; gap: 8px; align-items: center; }

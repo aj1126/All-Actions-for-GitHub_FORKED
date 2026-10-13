@@ -4,7 +4,7 @@
 // works the same inside github.com and on an extension page.
 
 import {
-  sortEntries, tally, filterEntries, formatDuration, formatWhen, formatAgo,
+  sortEntries, tally, filterEntries, formatDuration, formatWhen, formatAgo, describeCron,
 } from "./lib/runs.js";
 
 const STALE_MS = 5 * 60 * 1000;
@@ -17,18 +17,21 @@ const HISTORY = 10;
 
 const LABELS = {
   failed: "Failed",
+  missed: "Didn't run",
   running: "Running",
   passed: "Passed",
   other: "Cancelled or skipped",
 };
 const GROUP_TITLES = {
-  failed: "Needs attention",
+  failed: "Failed",
+  missed: "Didn't run",
   running: "Running",
   other: "Cancelled or skipped",
   passed: "Passed",
 };
 
 const ICONS = {
+  missed: '<svg class="icon missed" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>',
   failed: '<svg class="icon failed" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.343 13.657A8 8 0 1 1 13.658 2.343 8 8 0 0 1 2.343 13.657ZM6.03 4.97a.751.751 0 0 0-1.042.018.751.751 0 0 0-.018 1.042L6.94 8 4.97 9.97a.749.749 0 0 0 .326 1.275.749.749 0 0 0 .734-.215L8 9.06l1.97 1.97a.749.749 0 0 0 1.275-.326.749.749 0 0 0-.215-.734L9.06 8l1.97-1.97a.749.749 0 0 0-.326-1.275.749.749 0 0 0-.734.215L8 6.94Z"/></svg>',
   passed: '<svg class="icon passed" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.751.751 0 0 0-.018-1.042.751.751 0 0 0-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 0 0-1.042.018.751.751 0 0 0-.018 1.042l2 2a.75.75 0 0 0 1.06 0Z"/></svg>',
   running: '<svg class="icon running spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 1-6.5 6.5" stroke-linecap="round"/></svg>',
@@ -149,11 +152,17 @@ export async function mountView(host) {
   function renderBanner() {
     const err = state.refreshState?.error;
     let text = "";
+    let info = false;
     if (!state.hasToken) text = "";
     else if (err?.kind === "token") text = "GitHub no longer accepts your token. It has probably expired. Open Settings to paste a new one.";
     else if (err?.kind === "rate") text = `GitHub's hourly request limit was reached.${err.resetAt ? ` Try again after ${new Date(err.resetAt).toLocaleTimeString()}.` : ""}`;
     else if (err) text = `Couldn't refresh: ${err.message}`;
+    else if (state.snapshot?.scheduleAccess === "denied") {
+      info = true;
+      text = "To spot scheduled workflows that didn't run, your token also needs Contents: Read. Open Settings to see how to add it.";
+    }
     ui.banner.textContent = text;
+    ui.banner.classList.toggle("info", info);
     ui.banner.hidden = !text;
   }
 
@@ -166,13 +175,14 @@ export async function mountView(host) {
     const entries = sortEntries(s?.entries ?? []);
     const counts = tally(entries);
     // Pick the starting filter once real results are in: problems first if there are any.
-    if (!state.tab && s?.fetchedAt) state.tab = counts.failed ? "attention" : "all";
+    if (!state.tab && s?.fetchedAt) state.tab = counts.attention ? "attention" : "all";
     const tab = state.tab || "all";
 
     const items = [
-      ["attention", "Needs attention", counts.failed, null],
+      ["attention", "Needs attention", counts.attention, null],
       ["all", "All workflows", counts.total, null],
       ["failed", "Failed", counts.failed, "failed"],
+      ["missed", "Didn't run", counts.missed, "missed"],
       ["running", "Running", counts.running, "running"],
       ["passed", "Passed", counts.passed, "passed"],
     ];
@@ -234,7 +244,7 @@ export async function mountView(host) {
         el(
           "div",
           { class: "empty-state" },
-          tab === "attention" && !state.query ? "Nothing needs attention. Every latest run passed or is still going." : "No workflows match.",
+          tab === "attention" && !state.query ? "Nothing needs attention. Every workflow ran on schedule and its latest run passed or is still going." : "No workflows match.",
         ),
       );
     } else {
@@ -283,16 +293,38 @@ export async function mountView(host) {
   };
 }
 
+const NOTES = {
+  inactive: "GitHub turned this schedule off after 60 days without repository activity. Turn it back on from the workflow page.",
+  disabled: "Schedule turned off in this repository",
+};
+
 function renderRow(e) {
   const now = new Date();
   const l = e.latest;
   const parts = [];
-  parts.push(l.event === "schedule" ? "Scheduled" : `On ${l.event.replace(/_/g, " ")}`);
-  if (l.branch) parts.push(`on ${l.branch}`);
-  if (e.state === "running") parts.push(`started ${formatAgo(now - Date.parse(l.startedAt))}`);
-  else {
-    const d = formatDuration(Date.parse(l.updatedAt) - Date.parse(l.startedAt));
-    if (d) parts.push(`took ${d}`);
+  if (e.crons?.length) parts.push(e.crons.map(describeCron).join(", "));
+  else if (l) parts.push(l.event === "schedule" ? "Scheduled" : `On ${l.event.replace(/_/g, " ")}`);
+  if (e.note === "missed" && e.expectedAt) parts.push(`was due ${formatWhen(e.expectedAt, now)}`);
+  else if (NOTES[e.note]) parts.push(NOTES[e.note]);
+  else if (l) {
+    if (l.branch) parts.push(`on ${l.branch}`);
+    if (e.state === "running") parts.push(`started ${formatAgo(now - Date.parse(l.startedAt))}`);
+    else {
+      const d = formatDuration(Date.parse(l.updatedAt) - Date.parse(l.startedAt));
+      if (d) parts.push(`took ${d}`);
+    }
+  }
+
+  let failedAt = null;
+  if (e.state === "failed" && e.failedStep) {
+    const where = e.failedStep.step ? `“${e.failedStep.step}”` : `job “${e.failedStep.job}”`;
+    failedAt = el(
+      "div",
+      { class: "failstep" },
+      "Failed at ",
+      e.failedStep.url ? el("a", { href: e.failedStep.url }, where) : where,
+      e.failedStep.step && e.failedStep.job ? ` in ${e.failedStep.job}` : "",
+    );
   }
 
   const hist = e.history.map((h) =>
@@ -300,9 +332,25 @@ function renderRow(e) {
   );
   while (hist.length < HISTORY) hist.unshift(el("span", { class: "empty" }));
 
+  let when;
+  if (e.state === "missed") {
+    when = el(
+      "div",
+      { class: "when" },
+      el("a", { href: e.workflow.url }, el("b", {}, LABELS.missed)),
+      l ? ` · last ran ${formatWhen(l.createdAt, now)}` : " · no recent runs",
+    );
+  } else if (e.note === "disabled") {
+    when = el("div", { class: "when" }, el("a", { href: e.workflow.url }, el("b", {}, "Turned off")), l ? ` · last ran ${formatWhen(l.createdAt, now)}` : "");
+  } else if (l) {
+    when = el("div", { class: "when" }, el("a", { href: l.url }, el("b", {}, LABELS[e.state])), ` · ${formatWhen(l.createdAt, now)}`);
+  } else {
+    when = el("div", { class: "when" }, el("b", {}, "Not due yet"));
+  }
+
   return el(
     "div",
-    { class: "row" },
+    { class: `row ${e.state}` },
     el("span", { html: ICONS[e.state], title: LABELS[e.state] }),
     el(
       "div",
@@ -314,8 +362,9 @@ function renderRow(e) {
         el("span", { class: "wf" }, " / ", el("a", { href: e.workflow.url }, e.workflow.name)),
       ),
       el("div", { class: "sub" }, parts.join(" · ")),
+      failedAt,
     ),
-    el("div", { class: "when" }, el("a", { href: l.url }, el("b", {}, LABELS[e.state])), ` · ${formatWhen(l.createdAt, now)}`),
+    when,
     el("div", { class: "hist", "aria-label": "Last 10 runs, oldest first" }, hist),
   );
 }

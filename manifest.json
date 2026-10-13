@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "All Actions for GitHub",
   "short_name": "All Actions",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "An account-wide \"All actions\" view: see whether every repo's scheduled workflows ran and passed, on one page.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -56,7 +56,8 @@
       "resources": [
         "src/view.js",
         "src/view.css",
-        "src/lib/runs.js"
+        "src/lib/runs.js",
+        "src/lib/cron.js"
       ],
       "matches": [
         "https://github.com/*"
@@ -66,5 +67,8 @@
   "options_ui": {
     "page": "src/settings.html",
     "open_in_tab": true
-  }
+  },
+  "optional_permissions": [
+    "notifications"
+  ]
 }

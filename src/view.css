@@ -12,6 +12,7 @@
   --aa-passed: #1a7f37;
   --aa-failed: #cf222e;
   --aa-running: #9a6700;
+  --aa-missed: #bc4c00;
   --aa-other: #818b98;
   --aa-primary: #1f883d;
 
@@ -26,6 +27,7 @@
   --passed: var(--fgColor-success, var(--aa-passed));
   --failed: var(--fgColor-danger, var(--aa-failed));
   --running: var(--fgColor-attention, var(--aa-running));
+  --missed: var(--fgColor-severe, var(--aa-missed));
   --other: var(--fgColor-muted, var(--aa-other));
   --primary: var(--button-primary-bgColor-rest, var(--aa-primary));
   --indicator: var(--borderColor-accent-emphasis, var(--aa-accent));
@@ -49,6 +51,7 @@
     --aa-passed: #3fb950;
     --aa-failed: #f85149;
     --aa-running: #d29922;
+    --aa-missed: #db6d28;
     --aa-other: #6e7681;
     --aa-primary: #238636;
   }
@@ -96,6 +99,7 @@ a:hover { text-decoration: underline; }
 .dot.none { background: transparent; }
 .dot.failed { background: var(--failed); }
 .dot.running { background: var(--running); }
+.dot.missed { background: var(--missed); }
 .dot.passed { background: var(--passed); }
 .dot.other { background: var(--other); }
 
@@ -105,6 +109,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--border); border-radius: 6px; background: var(--bg-subtle);
 }
 .banner { border: 1px solid var(--failed); border-radius: 6px; padding: 10px 14px; background: var(--bg-subtle); }
+.banner.info { border-color: var(--border); color: var(--fg-muted); }
 
 .box { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); }
 .boxhead {
@@ -130,6 +135,8 @@ a:hover { text-decoration: underline; }
 .title .wf { color: var(--fg-muted); font-weight: 400; }
 .title .wf a { color: inherit; }
 .sub { color: var(--fg-muted); font-size: 12.5px; }
+.failstep { color: var(--failed); font-size: 12.5px; }
+.failstep a { color: inherit; text-decoration: underline; }
 .when { font-size: 12.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
 .when a { color: var(--fg); }
 .when b { font-weight: 500; }
@@ -137,6 +144,7 @@ a:hover { text-decoration: underline; }
 .icon.failed { color: var(--failed); }
 .icon.passed { color: var(--passed); }
 .icon.running { color: var(--running); }
+.icon.missed { color: var(--missed); }
 .icon.other { color: var(--other); }
 .spin { animation: spin 1.4s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

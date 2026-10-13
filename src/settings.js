@@ -11,6 +11,7 @@ const TOKEN_URL =
     description: "Read-only access to workflow runs for the All Actions for GitHub browser extension.",
     expires_in: "90",
     actions: "read",
+    contents: "read",
   });
 
 const $ = (id) => document.getElementById(id);
@@ -64,6 +65,20 @@ async function onScopeChange() {
   await chrome.storage.local.remove("snapshot"); // so the next view load fetches with the new setting
 }
 
+async function onNotifyChange(e) {
+  const box = e.target;
+  if (box.checked) {
+    // Must be requested straight from the click, before anything else is awaited.
+    const granted = await chrome.permissions.request({ permissions: ["notifications"] }).catch(() => false);
+    if (!granted) {
+      box.checked = false;
+      setStatus("Notifications stay off because the permission wasn't granted.", "err");
+      return;
+    }
+  }
+  await setSettings({ ...(await getSettings()), notify: box.checked });
+}
+
 async function onDone() {
   if (!(await getToken())) {
     setStatus("Connect a token first (step 2).", "err");
@@ -85,6 +100,8 @@ async function init() {
   const settings = await getSettings();
   $("scope-scheduled").checked = settings.scheduledOnly;
   $("scope-all").checked = !settings.scheduledOnly;
+  $("notify").checked = settings.notify;
+  $("notify").addEventListener("change", onNotifyChange);
   $("token-form").addEventListener("submit", onTokenSubmit);
   $("scope-scheduled").addEventListener("change", onScopeChange);
   $("scope-all").addEventListener("change", onScopeChange);

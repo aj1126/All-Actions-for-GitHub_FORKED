@@ -13,7 +13,7 @@
   const SCOPES = "header, .AppHeader, dialog, [role='dialog'], nav";
   const PR_LINK = 'a[href="/pulls"], a[href="https://github.com/pulls"]';
 
-  let failedCount = 0;
+  let attentionCount = 0; // failed plus didn't-run
 
   function makeIcon(original) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -70,7 +70,6 @@
     link.href = VIEW_URL;
     link.setAttribute("data-turbo", "false");
     link.setAttribute("aria-label", "All actions");
-    link.setAttribute("title", "All actions");
 
     const oldSvg = link.querySelector("svg");
     if (oldSvg) oldSvg.replaceWith(makeIcon(oldSvg));
@@ -98,13 +97,14 @@
 
   function updateBadges() {
     for (const b of document.querySelectorAll(".all-actions-count, .all-actions-dot")) {
-      b.hidden = !failedCount;
-      if (b.classList.contains("all-actions-count")) b.textContent = failedCount ? String(failedCount) : "";
+      b.hidden = !attentionCount;
+      if (b.classList.contains("all-actions-count")) b.textContent = attentionCount ? String(attentionCount) : "";
     }
     for (const a of document.querySelectorAll(".all-actions-link")) {
-      const label = failedCount ? `All actions, ${failedCount} failed` : "All actions";
+      const label = attentionCount ? `All actions, ${attentionCount} need attention` : "All actions";
       a.setAttribute("aria-label", label);
-      a.setAttribute("title", label);
+      // Hover text only on the header icon, which has no visible label; the menu item has one.
+      if (a.querySelector(".all-actions-dot")) a.setAttribute("title", label);
     }
   }
 
@@ -142,7 +142,9 @@
   }
 
   function setFromSnapshot(snapshot) {
-    failedCount = snapshot?.entries ? snapshot.entries.filter((e) => e.state === "failed").length : 0;
+    attentionCount = snapshot?.entries
+      ? snapshot.entries.filter((e) => e.state === "failed" || e.state === "missed").length
+      : 0;
     updateBadges();
   }
 

@@ -1,5 +1,6 @@
 import { loadSnapshot, TokenError, RateLimitError } from "./lib/github.js";
 import { getToken, getSettings, getSnapshot, setSnapshot, updateBadge } from "./lib/storage.js";
+import { newProblems } from "./lib/runs.js";
 
 export const VIEW_URL = "https://github.com/?all-actions";
 const REFRESH_MINUTES = 30;
@@ -12,14 +13,20 @@ function refresh() {
   running = (async () => {
     const token = await getToken();
     if (!token) return;
-    const { scheduledOnly } = await getSettings();
+    const { scheduledOnly, notify } = await getSettings();
+    const previous = await getSnapshot();
+    const { scheduleCache = {} } = await chrome.storage.local.get("scheduleCache");
     await chrome.storage.local.set({ refreshState: { running: true, done: 0, total: 0, at: Date.now() } });
     try {
-      const snapshot = await loadSnapshot(token, {
+      const result = await loadSnapshot(token, {
         scheduledOnly,
+        previous,
+        scheduleCache,
         onProgress: (done, total) => chrome.storage.local.set({ refreshState: { running: true, done, total, at: Date.now() } }),
       });
-      await setSnapshot(snapshot);
+      await chrome.storage.local.set({ scheduleCache: result.scheduleCache });
+      await setSnapshot(result.snapshot);
+      if (notify && previous?.fetchedAt) await notifyProblems(newProblems(previous, result.snapshot));
       await chrome.storage.local.set({ refreshState: { running: false } });
     } catch (e) {
       const kind = e instanceof TokenError ? "token" : e instanceof RateLimitError ? "rate" : "other";
@@ -32,6 +39,37 @@ function refresh() {
   });
   return running;
 }
+
+/** Desktop notification for newly failed or missed workflows (opt-in from Settings). */
+async function notifyProblems(problems) {
+  if (!problems.length) return;
+  if (!(await chrome.permissions.contains({ permissions: ["notifications"] }))) return;
+  const describe = (e) => `${e.repo.name} / ${e.workflow.name}: ${e.state === "failed" ? "failed" : "didn't run"}`;
+  const title = problems.length === 1 ? "A workflow needs attention" : `${problems.length} workflows need attention`;
+  const lines = problems.slice(0, 4).map(describe);
+  if (problems.length > 4) lines.push(`and ${problems.length - 4} more`);
+  await chrome.notifications.create(`all-actions-${Date.now()}`, {
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
+    title,
+    message: lines.join("\n"),
+  });
+}
+
+// Clicking a notification opens the All actions page.
+function onNotificationClick(id) {
+  if (!id.startsWith("all-actions-")) return;
+  chrome.tabs.create({ url: VIEW_URL });
+  chrome.notifications.clear(id);
+}
+function listenForNotificationClicks() {
+  // The notifications API only exists once the optional permission has been granted.
+  if (chrome.notifications && !chrome.notifications.onClicked.hasListener(onNotificationClick)) {
+    chrome.notifications.onClicked.addListener(onNotificationClick);
+  }
+}
+listenForNotificationClicks();
+chrome.permissions.onAdded.addListener(listenForNotificationClicks);
 
 // Toolbar icon opens the All actions page on github.com.
 chrome.action.onClicked.addListener(() => {

@@ -17,7 +17,8 @@
       <ol class="steps">
         <li>
           <b>Create a read-only token</b>
-          <p class="muted">This opens GitHub with the name and the <code>Actions: Read</code> permission filled in. Under “Repository access”, choose <b>All repositories</b> or just the ones you want watched, then click <b>Generate token</b>.</p>
+          <p class="muted">This opens GitHub with the name and two read-only permissions filled in: <code>Actions: Read</code> to see your runs, and <code>Contents: Read</code> to read each workflow's schedule so the extension can tell when one didn't run. Under “Repository access”, choose <b>All repositories</b> or just the ones you want watched, then click <b>Generate token</b>.</p>
+          <p class="muted">Already connected with an older token? You don't need a new one. <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">Edit it on GitHub ↗</a>, add <b>Contents: Read</b> under Repository permissions, and save. The token itself stays the same.</p>
           <p><a class="btn" id="token-link" target="_blank" rel="noopener">Open GitHub's token page ↗</a></p>
         </li>
         <li>
@@ -36,6 +37,11 @@
             <label><input type="radio" name="scope" value="scheduled" id="scope-scheduled" checked> Scheduled workflows only (recommended)</label>
             <label><input type="radio" name="scope" value="all" id="scope-all"> Every workflow run</label>
           </fieldset>
+        </li>
+        <li>
+          <b>Notifications</b>
+          <label class="check"><input type="checkbox" id="notify"> Show a desktop notification when a workflow fails or doesn't run</label>
+          <p class="muted">Off by default. Your browser will ask for permission the first time you turn it on.</p>
         </li>
       </ol>
       <div class="actions">

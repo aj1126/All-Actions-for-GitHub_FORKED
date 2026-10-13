@@ -47,11 +47,25 @@ on:
   assert.deepEqual(extractCrons(yaml), ["0 5 * * *", "30 6 * * 1-5", "15 * * * *"]);
 });
 
-test("describeCron", () => {
-  assert.equal(describeCron("0 5 * * *"), "Daily at 05:00 UTC");
-  assert.equal(describeCron("30 6 * * 1-5"), "Weekdays at 06:30 UTC");
-  assert.equal(describeCron("0 9 * * 1"), "Mondays at 09:00 UTC");
-  assert.equal(describeCron("15 * * * *"), "Hourly at :15");
-  assert.equal(describeCron("0 0 1 * *"), "Monthly on day 1 at 00:00 UTC");
-  assert.equal(describeCron("*/10 * * * *"), "cron “*/10 * * * *”");
+test("describeCron in UTC", () => {
+  const utc = { timeZone: "UTC" };
+  assert.equal(describeCron("0 5 * * *", utc), "Daily at 05:00 UTC");
+  assert.equal(describeCron("30 6 * * 1-5", utc), "Weekdays at 06:30 UTC");
+  assert.equal(describeCron("0 9 * * 1", utc), "Mondays at 09:00 UTC");
+  assert.equal(describeCron("15 * * * *", utc), "Hourly at :15");
+  assert.equal(describeCron("0 0 1 * *", utc), "Monthly on day 1 at 00:00 UTC");
+  assert.equal(describeCron("*/10 * * * *", utc), "cron “*/10 * * * *”");
+});
+
+test("describeCron in the viewer's time zone", () => {
+  const ny = { timeZone: "America/New_York", now: new Date("2026-10-13T15:00:00Z") }; // EDT, UTC-4
+  assert.equal(describeCron("5 8 * * *", ny), "Daily at 04:05 (08:05 UTC)");
+  assert.equal(describeCron("30 6 * * 1-5", ny), "Weekdays at 02:30 (06:30 UTC)");
+  assert.equal(describeCron("0 2 * * 1", ny), "Sundays at 22:00 (Mondays 02:00 UTC)");
+  assert.equal(describeCron("0 2 * * 1-5", ny), "Weekdays at 02:00 UTC");
+  assert.equal(describeCron("0 12 1 * *", ny), "Monthly on day 1 at 08:00 (12:00 UTC)");
+  const winter = { timeZone: "America/New_York", now: new Date("2026-12-01T15:00:00Z") }; // EST, UTC-5
+  assert.equal(describeCron("5 8 * * *", winter), "Daily at 03:05 (08:05 UTC)");
+  const tokyo = { timeZone: "Asia/Tokyo", now: new Date("2026-10-13T15:00:00Z") };
+  assert.equal(describeCron("0 20 * * 5", tokyo), "Saturdays at 05:00 (Fridays 20:00 UTC)");
 });

@@ -1,0 +1,53 @@
+name: Release
+
+# Builds the extension zip and publishes it as a GitHub release named after "version"
+# in manifest.json. Start it from the Actions tab (Release → Run workflow), or push a
+# matching tag such as v0.4.0.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm test
+
+      - name: Work out the version
+        run: |
+          tag="v$(node -p 'require("./manifest.json").version')"
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match manifest.json version ${tag#v}"
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+
+      - run: npm run package
+
+      - name: Write release notes
+        run: |
+          previous=$(git tag --merged HEAD --sort=-v:refname | grep -vx "$TAG" | head -n 1)
+          {
+            echo "Download **all-actions-for-github.zip** below. To install, unzip it and load the folder from your browser's extensions page (Developer mode → Load unpacked). To update, unzip it over your existing folder, replacing the files, and click reload on the extension's card. See the [README](https://github.com/$GITHUB_REPOSITORY#install) for details."
+            echo
+            echo "## Changes"
+            git log --format='- %s' ${previous:+"$previous..HEAD"}
+          } > notes.md
+          cat notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" all-actions-for-github.zip --target "$GITHUB_SHA" --title "${TAG#v}" --notes-file notes.md

@@ -302,7 +302,7 @@ function renderRow(e) {
   const now = new Date();
   const l = e.latest;
   const parts = [];
-  if (e.crons?.length) parts.push(e.crons.map(describeCron).join(", "));
+  if (e.crons?.length) parts.push(e.crons.map((c) => describeCron(c, { now })).join(", "));
   else if (l) parts.push(l.event === "schedule" ? "Scheduled" : `On ${l.event.replace(/_/g, " ")}`);
   if (e.note === "missed" && e.expectedAt) parts.push(`was due ${formatWhen(e.expectedAt, now)}`);
   else if (NOTES[e.note]) parts.push(NOTES[e.note]);

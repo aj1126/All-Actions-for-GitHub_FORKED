@@ -108,20 +108,54 @@ export function extractCrons(yaml) {
 
 const pad = (n) => String(n).padStart(2, "0");
 
-/** Plain-English summary of common schedules, e.g. "Daily at 05:00 UTC". */
-export function describeCron(expr) {
+const PLURAL_DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+/**
+ * Where a UTC hour:minute lands in `timeZone` (the viewer's own when undefined), using the
+ * most recent such moment so daylight saving time is right for today.
+ * Returns the local "HH:MM" and how many days it shifts (-1, 0 or 1).
+ */
+function toLocal(h, m, now, timeZone) {
+  let t = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, m);
+  if (t > now.getTime()) t -= 86400000;
+  const d = new Date(t);
+  const time = d.toLocaleTimeString("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const day = (zone) => Date.parse(d.toLocaleDateString("en-CA", { timeZone: zone }));
+  return { time, shift: Math.round((day(timeZone) - day("UTC")) / 86400000) };
+}
+
+/**
+ * Plain-English summary of common schedules in the viewer's time zone, with the UTC time
+ * GitHub uses alongside, e.g. "Daily at 04:05 (08:05 UTC)". Viewers in UTC just see
+ * "Daily at 08:05 UTC". A weekday or day-of-month schedule that falls on a different day
+ * locally stays in UTC rather than get confusing.
+ */
+export function describeCron(expr, { now = new Date(), timeZone } = {}) {
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return `cron “${expr}”`;
   const [m, h, dom, mon, dow] = parts;
   const num = (x) => /^\d+$/.test(x);
   const any = (x) => x === "*";
-  if (num(m) && num(h) && any(dom) && any(mon)) {
-    const at = `${pad(h)}:${pad(m)} UTC`;
-    if (any(dow)) return `Daily at ${at}`;
-    if (dow === "1-5" || dow.toUpperCase() === "MON-FRI") return `Weekdays at ${at}`;
-    if (num(dow)) return `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"][dow]} at ${at}`;
-  }
   if (num(m) && any(h) && any(dom) && any(mon) && any(dow)) return `Hourly at :${pad(m)}`;
-  if (num(m) && num(h) && num(dom) && any(mon) && any(dow)) return `Monthly on day ${dom} at ${pad(h)}:${pad(m)} UTC`;
+  if (!num(m) || !num(h) || !any(mon)) return `cron “${expr}”`;
+
+  const utc = `${pad(h)}:${pad(m)}`;
+  const local = toLocal(Number(h), Number(m), now, timeZone);
+  const inUtc = local.time === utc && local.shift === 0;
+  const at = inUtc ? `${utc} UTC` : `${local.time} (${utc} UTC)`;
+  const atUtc = `${utc} UTC`;
+
+  if (any(dom)) {
+    if (any(dow)) return `Daily at ${at}`;
+    const weekdays = dow === "1-5" || dow.toUpperCase() === "MON-FRI";
+    if (weekdays) return `Weekdays at ${local.shift ? atUtc : at}`;
+    if (num(dow)) {
+      const utcDay = Number(dow) % 7;
+      if (!local.shift) return `${PLURAL_DAYS[utcDay]} at ${at}`;
+      return `${PLURAL_DAYS[(utcDay + local.shift + 7) % 7]} at ${local.time} (${PLURAL_DAYS[utcDay]} ${atUtc})`;
+    }
+  } else if (num(dom) && any(dow)) {
+    return `Monthly on day ${dom} at ${local.shift ? atUtc : at}`;
+  }
   return `cron “${expr}”`;
 }

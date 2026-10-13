@@ -2,19 +2,27 @@
 
 A browser extension that adds an account-wide **All actions** view to GitHub, next to "All issues" and "All pull requests". One page shows whether each of your repositories' scheduled workflows ran and passed, so you don't have to click into every repo each morning.
 
+![The All actions page showing the Needs attention list: one failed backup with the step that failed, a forecast job that didn't run, and a schedule GitHub turned off after 60 days](docs/screenshots/all-actions-light.png)
+
 - **Actions** appears between Issues and Pull requests in GitHub's header and in the left-hand menu. The header icon gets a red dot when something needs attention.
 - The page opens at `https://github.com/?all-actions`, inside GitHub's own top bar, with a sidebar of filters like the All issues page.
 - Problems sort to the top: runs that **failed** (with the step that failed) and scheduled workflows that **didn't run** when they were due, including ones GitHub switched off after 60 days without activity.
-- Each row shows the schedule in plain words ("Daily at 05:00 UTC"), the latest run, and a strip of the last 10 runs. Click anything to open it on GitHub.
+- Each row shows the schedule in plain words in your own time zone with the UTC time GitHub uses alongside ("Daily at 04:05 (08:05 UTC)"), the latest run, and a strip of the last 10 runs. Click anything to open it on GitHub.
 - It checks again in the background every 30 minutes, and the toolbar icon shows how many workflows need attention.
 - Optional desktop notifications when a workflow fails or doesn't run (off by default).
 - It runs entirely in your browser. There's no server: it talks to GitHub's API directly with your own read-only token.
 
-> Status: early version (0.3.1). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
+> Status: early version (0.4). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
+
+It follows your GitHub theme. Here's every workflow in dark mode:
+
+![The All actions page in dark mode listing all eight demo workflows grouped into Failed, Didn't run, Running and Passed, each with its schedule and last 10 runs](docs/screenshots/all-actions-dark.png)
+
+<sub>Screenshots use made-up demo data.</sub>
 
 ## Install
 
-1. Download this repository: **Code → Download ZIP**, then unzip it. (Or `git clone` it.)
+1. Download **all-actions-for-github.zip** from the [latest release](https://github.com/amorphose/GitHub-All-Actions/releases/latest) and unzip it somewhere you'll keep it. (Or `git clone` this repository.)
 2. Open your browser's extensions page:
    - Chrome / Brave: `chrome://extensions`
    - Edge: `edge://extensions`
@@ -26,7 +34,7 @@ A browser extension that adds an account-wide **All actions** view to GitHub, ne
 
 Your token and settings are kept when you update, so setup is a one-time step.
 
-1. Get the new files **into the same folder** (`git pull`, or unzip the new download over the old folder).
+1. Get the new files **into the same folder**: unzip the new release over the old folder, replacing the files (or `git pull`).
 2. On the extensions page, click the reload icon on the extension's card.
 3. Refresh any open GitHub tabs.
 
@@ -73,12 +81,17 @@ GitHub runs schedules in UTC and often starts them hours late at busy times, so 
 No build step. Edit the files, then click the reload icon on the extension's card in `chrome://extensions`.
 
 ```sh
-npm test   # unit tests for src/lib/runs.js (Node 20+)
+npm test          # unit tests for the run and schedule logic (Node 20+)
+npm run package   # builds all-actions-for-github.zip
 ```
+
+To publish a release, bump `version` in `manifest.json` and push to `main`, then open the **Actions** tab, choose **Release** and click **Run workflow**. It runs the tests, builds the zip and publishes it as a release tagged with that version (for example `v0.4.0`). Pushing a matching tag does the same.
+
+The README screenshots come from `scripts/screenshots/`, which renders the real page with made-up data: `node scripts/screenshots/capture.cjs` (needs Playwright).
 
 ## Roadmap
 
-- **Next:** release zips built automatically, README screenshots, Firefox support.
+- **Next:** Firefox support.
 - **Later:** store listings (Chrome Web Store, Edge Add-ons, Firefox Add-ons), "Sign in with GitHub" instead of a token, organization repos, a Re-run button.
 
 ## License

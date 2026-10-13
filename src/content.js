@@ -3,6 +3,7 @@
 //    up the site's styling, then swaps the icon, label and link.
 // 2. On https://github.com/?all-actions, shows the All actions list in place of the page
 //    content, under GitHub's real top bar.
+// 3. Gives the header icon a GitHub-style hover label, and makes G then A open All actions.
 
 (() => {
   const MARK = "data-all-actions";
@@ -101,10 +102,120 @@
     for (const a of document.querySelectorAll(".all-actions-link")) {
       const label = attentionCount ? `All actions, ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention` : "All actions";
       a.setAttribute("aria-label", label);
-      // Hover text only on the header icon, which has no visible label; the menu item has one.
-      if (a.querySelector(".all-actions-dot")) a.setAttribute("title", label);
+      a.removeAttribute("title"); // the header icon gets our own tooltip instead
     }
   }
+
+  /* ---------- Hover label on the header icon, styled like GitHub's ---------- */
+
+  // GitHub's own <tool-tip> element is driven by GitHub's scripts, which don't pick up
+  // copies made by an extension, so this draws a lookalike instead. Only the header icon
+  // gets one; the menu item already shows its label.
+  let tip = null;
+  let tipFor = null;
+  let tipTimer = 0;
+
+  function tooltip() {
+    if (tip?.isConnected) return tip;
+    tip = document.createElement("div");
+    tip.className = "all-actions-tooltip";
+    tip.setAttribute("aria-hidden", "true"); // the link's aria-label already says this
+    tip.hidden = true;
+    const keys = document.createElement("span");
+    keys.className = "all-actions-tooltip-keys";
+    for (const k of ["G", "A"]) {
+      const kbd = document.createElement("kbd");
+      kbd.textContent = k;
+      keys.append(kbd);
+    }
+    tip.append("All actions", keys);
+    document.body.append(tip);
+    return tip;
+  }
+
+  function showTip(link) {
+    clearTimeout(tipTimer);
+    const t = tooltip();
+    tipFor = link;
+    t.querySelector(".all-actions-tooltip-keys").hidden = onRepoPage();
+    t.hidden = false;
+    const r = link.getBoundingClientRect();
+    const w = t.offsetWidth;
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), document.documentElement.clientWidth - w - 8);
+    t.style.left = `${left + window.scrollX}px`;
+    t.style.top = `${r.bottom + 6 + window.scrollY}px`;
+  }
+
+  function hideTip() {
+    clearTimeout(tipTimer);
+    tipFor = null;
+    if (tip) tip.hidden = true;
+  }
+
+  const headerIcon = (target) => {
+    const link = target instanceof Element ? target.closest(".all-actions-link") : null;
+    return link?.querySelector(".all-actions-dot") ? link : null;
+  };
+  document.addEventListener("mouseover", (e) => {
+    const link = headerIcon(e.target);
+    if (link && link !== tipFor) {
+      clearTimeout(tipTimer);
+      tipTimer = setTimeout(() => showTip(link), 100);
+    } else if (!link && tipFor) hideTip();
+  });
+  document.addEventListener("mouseout", (e) => {
+    if (headerIcon(e.target) && !headerIcon(e.relatedTarget)) hideTip();
+  });
+  document.addEventListener("focusin", (e) => {
+    const link = headerIcon(e.target);
+    if (link && link.matches(":focus-visible")) showTip(link);
+  });
+  document.addEventListener("focusout", (e) => {
+    if (headerIcon(e.target)) hideTip();
+  });
+  document.addEventListener("click", hideTip, true);
+  window.addEventListener("scroll", hideTip, { passive: true });
+
+  /* ---------- G then A opens All actions ---------- */
+
+  // Top-level paths that aren't repositories. Inside a repo GitHub already uses G A for
+  // that repo's Actions tab, so the shortcut is left to GitHub there.
+  const NOT_REPOS = new Set([
+    "", "settings", "notifications", "pulls", "issues", "orgs", "users", "marketplace", "explore",
+    "topics", "trending", "collections", "sponsors", "codespaces", "search", "dashboard", "new",
+    "organizations", "account", "login", "logout", "features", "enterprise", "pricing", "about",
+    "apps", "stars", "watching", "copilot", "projects", "discussions", "github-copilot", "security", "models",
+  ]);
+  function onRepoPage() {
+    const [owner, repo] = location.pathname.split("/").filter(Boolean);
+    return Boolean(owner && repo) && !NOT_REPOS.has(owner.toLowerCase());
+  }
+
+  function typingIn(el) {
+    if (!(el instanceof Element)) return false;
+    if (el.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='textbox']")) return true;
+    return el.isContentEditable;
+  }
+
+  let gPressedAt = 0;
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || typingIn(e.target)) {
+      gPressedAt = 0;
+      return;
+    }
+    const key = e.key.toLowerCase();
+    if (key === "g" && !e.shiftKey) {
+      gPressedAt = Date.now();
+      return;
+    }
+    const afterG = Date.now() - gPressedAt < 1500;
+    gPressedAt = 0;
+    // A page that already handled G A itself (GitHub, inside a repo) wins.
+    if (key === "a" && !e.shiftKey && afterG && !e.defaultPrevented && !onRepoPage()) {
+      e.preventDefault();
+      location.assign(VIEW_URL);
+    }
+  });
 
   /* ---------- The All actions page inside github.com ---------- */
 

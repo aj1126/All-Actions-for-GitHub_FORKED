@@ -10,7 +10,7 @@ export const ATTENTION = new Set(["failed", "missed"]);
 
 // GitHub often starts scheduled runs late, especially at the top of the hour, so a run
 // only counts as missed once it's this late.
-export const MISSED_GRACE_MS = 90 * 60 * 1000;
+export const MISSED_GRACE_MS = 12 * 60 * 60 * 1000;
 
 const FAILED = new Set(["failure", "timed_out", "startup_failure", "action_required"]);
 const OTHER = new Set(["cancelled", "skipped", "neutral", "stale"]);

@@ -73,12 +73,13 @@
 
     const oldSvg = link.querySelector("svg");
     if (oldSvg) oldSvg.replaceWith(makeIcon(oldSvg));
-    const hasLabel = relabel(link);
-
-    const badge = document.createElement("span");
-    badge.className = hasLabel ? "all-actions-count" : "all-actions-dot";
-    badge.setAttribute("aria-hidden", "true");
-    link.append(badge);
+    // The menu item keeps its text label and gets no marker; only the header icon shows one.
+    if (!relabel(link)) {
+      const dot = document.createElement("span");
+      dot.className = "all-actions-dot";
+      dot.setAttribute("aria-hidden", "true");
+      link.append(dot);
+    }
     link.classList.add("all-actions-link");
 
     return { unit, clone };
@@ -96,12 +97,9 @@
   }
 
   function updateBadges() {
-    for (const b of document.querySelectorAll(".all-actions-count, .all-actions-dot")) {
-      b.hidden = !attentionCount;
-      if (b.classList.contains("all-actions-count")) b.textContent = attentionCount ? String(attentionCount) : "";
-    }
+    for (const dot of document.querySelectorAll(".all-actions-dot")) dot.hidden = !attentionCount;
     for (const a of document.querySelectorAll(".all-actions-link")) {
-      const label = attentionCount ? `All actions, ${attentionCount} need attention` : "All actions";
+      const label = attentionCount ? `All actions, ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention` : "All actions";
       a.setAttribute("aria-label", label);
       // Hover text only on the header icon, which has no visible label; the menu item has one.
       if (a.querySelector(".all-actions-dot")) a.setAttribute("title", label);

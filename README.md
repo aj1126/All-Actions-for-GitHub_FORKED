@@ -2,7 +2,7 @@
 
 A browser extension that adds an account-wide **All actions** view to GitHub, next to "All issues" and "All pull requests". One page shows whether each of your repositories' scheduled workflows ran and passed, so you don't have to click into every repo each morning.
 
-- **Actions** appears between Issues and Pull requests in GitHub's header and in the left-hand menu, with a red marker when something failed.
+- **Actions** appears between Issues and Pull requests in GitHub's header and in the left-hand menu. The header icon gets a red dot when something needs attention.
 - The page opens at `https://github.com/?all-actions`, inside GitHub's own top bar, with a sidebar of filters like the All issues page.
 - Problems sort to the top: runs that **failed** (with the step that failed) and scheduled workflows that **didn't run** when they were due, including ones GitHub switched off after 60 days without activity.
 - Each row shows the schedule in plain words ("Daily at 05:00 UTC"), the latest run, and a strip of the last 10 runs. Click anything to open it on GitHub.
@@ -10,7 +10,7 @@ A browser extension that adds an account-wide **All actions** view to GitHub, ne
 - Optional desktop notifications when a workflow fails or doesn't run (off by default).
 - It runs entirely in your browser. There's no server: it talks to GitHub's API directly with your own read-only token.
 
-> Status: early version (0.3). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
+> Status: early version (0.3.1). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
 
 ## Install
 
@@ -66,7 +66,7 @@ Results are cached, so the page opens instantly and refreshes when the last chec
 
 ### How "didn't run" works
 
-GitHub runs schedules in UTC and often starts them late at busy times, so a scheduled run counts as missed only when nothing has started **90 minutes** after it was due. Workflows created after the due time are ignored, and a schedule you turned off yourself shows as "Turned off" rather than as a problem.
+GitHub runs schedules in UTC and often starts them hours late at busy times, so a scheduled run counts as missed only when nothing has started **12 hours** after it was due. Late runs inside that window aren't flagged. Workflows created after the due time are ignored, and a schedule you turned off yourself shows as "Turned off" rather than as a problem.
 
 ## Development
 

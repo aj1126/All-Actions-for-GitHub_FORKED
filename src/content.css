@@ -13,21 +13,8 @@
   pointer-events: none;
 }
 
-.all-actions-count {
-  margin-left: auto;
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  background: var(--bgColor-danger-emphasis, #cf222e);
-  color: var(--fgColor-onEmphasis, #ffffff);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
-}
 
-.all-actions-dot[hidden],
-.all-actions-count[hidden] { display: none; }
+.all-actions-dot[hidden] { display: none; }
 
 /* https://github.com/?all-actions: hide GitHub's page body; the list renders in its place. */
 html[data-all-actions-view] .application-main,

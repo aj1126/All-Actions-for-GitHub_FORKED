@@ -95,15 +95,15 @@ test("date and duration formatting", () => {
 
 const wf = (id, extra = {}) => ({ id, name: `WF ${id}`, path: `.github/workflows/wf${id}.yml`, state: "active", created_at: "2026-01-01T00:00:00Z", ...extra });
 
-test("expectedRunAt allows a 90-minute grace period", () => {
+test("expectedRunAt allows a 12-hour grace period", () => {
   const crons = ["0 5 * * *"];
-  assert.equal(expectedRunAt(crons, new Date("2026-10-13T06:00:00Z")).toISOString(), "2026-10-12T05:00:00.000Z");
-  assert.equal(expectedRunAt(crons, new Date("2026-10-13T06:31:00Z")).toISOString(), "2026-10-13T05:00:00.000Z");
+  assert.equal(expectedRunAt(crons, new Date("2026-10-13T16:59:00Z")).toISOString(), "2026-10-12T05:00:00.000Z");
+  assert.equal(expectedRunAt(crons, new Date("2026-10-13T17:01:00Z")).toISOString(), "2026-10-13T05:00:00.000Z");
   assert.equal(expectedRunAt(["not a cron"], new Date()), null);
 });
 
 test("applySchedules flags a daily job with no run today as missed", () => {
-  const now = new Date("2026-10-13T12:00:00Z");
+  const now = new Date("2026-10-13T18:00:00Z");
   const runs = [run(1, 10, "2026-10-12T05:20:00Z", "completed", "success")];
   const entries = applySchedules(summarizeRepoRuns(repo, runs), repo, [wf(10)], { ".github/workflows/wf10.yml": ["0 5 * * *"] }, now);
   assert.equal(entries[0].state, "missed");

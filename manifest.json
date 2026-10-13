@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "All Actions for GitHub",
+  "short_name": "All Actions",
+  "version": "0.1.0",
+  "description": "An account-wide \"All actions\" view: see whether every repo's scheduled workflows ran and passed, on one page.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "All actions",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.github.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/dashboard.html"],
+      "matches": ["https://github.com/*"]
+    }
+  ]
+}

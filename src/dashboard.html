@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>All actions</title>
+  <link rel="icon" href="../icons/icon-32.png">
+  <link rel="stylesheet" href="dashboard.css">
+  <script type="module" src="dashboard.js"></script>
+</head>
+<body>
+  <main class="page">
+    <header class="pagehead">
+      <h1>All actions</h1>
+      <span class="meta" id="meta"></span>
+      <span class="grow"></span>
+      <button class="btn" id="refresh" type="button" hidden>↻ Refresh</button>
+      <button class="btn" id="settings" type="button" hidden>Settings</button>
+    </header>
+
+    <!-- Setup / settings -->
+    <section id="setup" class="setup" hidden>
+      <h2>Connect your GitHub account</h2>
+      <p class="muted">The extension reads your workflow runs with a read-only token. The token stays in this browser and is only sent to api.github.com.</p>
+
+      <ol class="steps">
+        <li>
+          <b>Create a read-only token</b>
+          <p class="muted">This opens GitHub with the name and the <code>Actions: Read</code> permission filled in. Under “Repository access”, choose <b>All repositories</b> or just the ones you want watched, then click <b>Generate token</b>.</p>
+          <p><a class="btn" id="token-link" target="_blank" rel="noopener">Open GitHub's token page ↗</a></p>
+        </li>
+        <li>
+          <b>Paste it here</b>
+          <form id="token-form" class="tokenrow">
+            <label class="sr-only" for="token-input">GitHub token</label>
+            <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+            <button class="btn primary" type="submit" id="token-save">Connect</button>
+          </form>
+          <p id="token-status" class="status" role="status"></p>
+        </li>
+        <li>
+          <b>What should it watch?</b>
+          <fieldset class="radio">
+            <legend class="sr-only">Which runs to show</legend>
+            <label><input type="radio" name="scope" value="scheduled" id="scope-scheduled" checked> Scheduled workflows only (recommended)</label>
+            <label><input type="radio" name="scope" value="all" id="scope-all"> Every workflow run</label>
+          </fieldset>
+        </li>
+      </ol>
+      <div class="setup-actions">
+        <button class="btn link danger" type="button" id="disconnect" hidden>Disconnect</button>
+        <span class="grow"></span>
+        <button class="btn" type="button" id="setup-cancel" hidden>Cancel</button>
+        <button class="btn primary" type="button" id="setup-done">Start watching</button>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="results" hidden>
+      <div class="filters">
+        <label class="sr-only" for="search">Filter by repository or workflow</label>
+        <input id="search" type="search" placeholder="Filter by repository or workflow">
+      </div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div id="banner" class="banner" hidden></div>
+      <div class="box">
+        <div class="boxhead">
+          <strong id="count"></strong>
+          <span class="grow"></span>
+          <span class="col-when">Latest run</span>
+          <span class="col-hist">Last 10 runs</span>
+        </div>
+        <div id="rows"></div>
+      </div>
+      <div class="legend">
+        <span><i class="sq passed"></i>Passed</span>
+        <span><i class="sq failed"></i>Failed</span>
+        <span><i class="sq running"></i>Running</span>
+        <span><i class="sq other"></i>Cancelled or skipped</span>
+      </div>
+      <details id="errors" class="errors" hidden>
+        <summary></summary>
+        <ul></ul>
+      </details>
+    </section>
+  </main>
+</body>
+</html>

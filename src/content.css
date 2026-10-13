@@ -1,0 +1,30 @@
+/* Styles for the Actions entry added to GitHub's header and menu. */
+.all-actions-link { position: relative; }
+
+.all-actions-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fgColor-danger, #cf222e);
+  box-shadow: 0 0 0 2px var(--bgColor-default, #ffffff);
+  pointer-events: none;
+}
+
+.all-actions-count {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--bgColor-danger-emphasis, #cf222e);
+  color: var(--fgColor-onEmphasis, #ffffff);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.all-actions-dot[hidden],
+.all-actions-count[hidden] { display: none; }

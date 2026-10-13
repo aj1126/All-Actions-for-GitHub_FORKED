@@ -78,19 +78,6 @@ Results are cached, so the page opens instantly and refreshes when the last chec
 
 GitHub runs schedules in UTC and often starts them hours late at busy times, so a scheduled run counts as missed only when nothing has started **12 hours** after it was due. Late runs inside that window aren't flagged. Workflows created after the due time are ignored, and a schedule you turned off yourself shows as "Turned off" rather than as a problem.
 
-## Development
-
-No build step. Edit the files, then click the reload icon on the extension's card in `chrome://extensions`.
-
-```sh
-npm test          # unit tests for the run and schedule logic (Node 20+)
-npm run package   # builds all-actions-for-github.zip
-```
-
-To publish a release, bump `version` in `manifest.json` and push to `main`, then open the **Actions** tab, choose **Release** and click **Run workflow**. It runs the tests, builds the zip and publishes it as a release tagged with that version (for example `v0.4.0`). Pushing a matching tag does the same.
-
-The README screenshots come from `scripts/screenshots/`, which renders the real page with made-up data: `node scripts/screenshots/capture.cjs` (needs Playwright).
-
 ## Roadmap
 
 - **Next:** Firefox support.

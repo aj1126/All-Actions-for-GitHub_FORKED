@@ -12,7 +12,7 @@ A browser extension that adds an account-wide **All actions** view to GitHub, ne
 - Optional desktop notifications when a workflow fails or doesn't run (off by default).
 - It runs entirely in your browser. There's no server: it talks to GitHub's API directly with your own read-only token.
 
-> Status: early version (0.4). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
+> Status: early version (0.5). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
 
 It follows your GitHub theme. Here's every workflow in dark mode:
 
@@ -59,6 +59,8 @@ When the token expires, the page tells you, and you can paste a new one under **
 
 It can only *read*: workflow runs, repository details (name, visibility) and file contents (used only for workflow files under `.github/workflows/`). It can't change code, settings or workflows. The token is stored in your browser's extension storage and is sent only to `api.github.com`.
 
+See the [privacy policy](PRIVACY.md) for everything the extension stores and sends.
+
 ## How it works
 
 | Piece | File | What it does |
@@ -70,7 +72,7 @@ It can only *read*: workflow runs, repository details (name, visibility) and fil
 | GitHub integration | `src/content.js`, `src/early.js` | Copies GitHub's own Pull requests link, turns it into an Actions link, and inserts it just before Pull requests. On `github.com/?all-actions` it hides the page body and shows the list in its place, under GitHub's real top bar. |
 | Background | `src/background.js` | Does the fetching (on request and every 30 minutes), saves results to extension storage, and keeps the toolbar badge current. |
 
-Results are cached, so the page opens instantly and refreshes when the last check is more than 5 minutes old (or when you click **Refresh**). Each refresh makes about two requests per repo (recent runs and the workflow list), plus one per newly failed run to find the failing step. Workflow files are re-read at most every 12 hours. With 20 repos that's around 40 requests per refresh, well under GitHub's 5,000 per hour.
+Results are cached, so the page opens instantly and refreshes when the last check is more than 5 minutes old (or when you click **Refresh**). Each refresh asks for each repo's workflow list, and then for its recent runs only if one of its workflows is scheduled (or, with **every workflow run** chosen, if it has any workflows). Repos without workflows cost one request. Lists are asked for with the ETag from last time, and GitHub answers unchanged ones with "304 Not Modified", which [doesn't count](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests-if-appropriate) against the 5,000 requests per hour. So on a quiet day a refresh uses almost none of the limit, even with hundreds of repos. Workflow files are re-read at most every 12 hours, and the failing step is looked up once per failed run.
 
 ### How "didn't run" works
 

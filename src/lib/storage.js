@@ -12,7 +12,7 @@ export async function setToken(token) {
 }
 
 export async function clearToken() {
-  await chrome.storage.local.remove(["token", "login", "snapshot", "scheduleCache"]);
+  await chrome.storage.local.remove(["token", "login", "snapshot", "scheduleCache", "httpCache"]);
 }
 
 export async function getLogin() {

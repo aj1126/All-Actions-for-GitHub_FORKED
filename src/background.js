@@ -15,16 +15,17 @@ function refresh() {
     if (!token) return;
     const { scheduledOnly, notify } = await getSettings();
     const previous = await getSnapshot();
-    const { scheduleCache = {} } = await chrome.storage.local.get("scheduleCache");
+    const { scheduleCache = {}, httpCache = {} } = await chrome.storage.local.get(["scheduleCache", "httpCache"]);
     await chrome.storage.local.set({ refreshState: { running: true, done: 0, total: 0, at: Date.now() } });
     try {
       const result = await loadSnapshot(token, {
         scheduledOnly,
         previous,
         scheduleCache,
+        httpCache,
         onProgress: (done, total) => chrome.storage.local.set({ refreshState: { running: true, done, total, at: Date.now() } }),
       });
-      await chrome.storage.local.set({ scheduleCache: result.scheduleCache });
+      await chrome.storage.local.set({ scheduleCache: result.scheduleCache, httpCache: result.httpCache });
       await setSnapshot(result.snapshot);
       if (notify && previous?.fetchedAt) await notifyProblems(newProblems(previous, result.snapshot));
       await chrome.storage.local.set({ refreshState: { running: false } });

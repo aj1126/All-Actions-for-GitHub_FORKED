@@ -5,6 +5,7 @@ A browser extension that adds an account-wide **All actions** view to GitHub, ne
 ![The All actions page showing the Needs attention list: one failed backup with the step that failed, a forecast job that didn't run, and a schedule GitHub turned off after 60 days](docs/screenshots/all-actions-light.png)
 
 - **Actions** appears between Issues and Pull requests in GitHub's header and in the left-hand menu. The header icon gets a red dot when something needs attention.
+- Press **G** then **A** anywhere on GitHub to open it, like G I for All issues. (Inside a repository, G A still opens that repository's Actions tab.)
 - The page opens at `https://github.com/?all-actions`, inside GitHub's own top bar, with a sidebar of filters like the All issues page.
 - Problems sort to the top: runs that **failed** (with the step that failed) and scheduled workflows that **didn't run** when they were due, including ones GitHub switched off after 60 days without activity.
 - Each row shows the schedule in plain words in your own time zone with the UTC time GitHub uses alongside ("Daily at 04:05 (08:05 UTC)"), the latest run, and a strip of the last 10 runs. Click anything to open it on GitHub.
@@ -12,7 +13,7 @@ A browser extension that adds an account-wide **All actions** view to GitHub, ne
 - Optional desktop notifications when a workflow fails or doesn't run (off by default).
 - It runs entirely in your browser. There's no server: it talks to GitHub's API directly with your own read-only token.
 
-> Status: early version (0.5). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
+> Status: early version (0.6). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.
 
 It follows your GitHub theme. Here's every workflow in dark mode:
 

@@ -22,7 +22,7 @@ It follows your GitHub theme. Here's every workflow in dark mode:
 
 ## Install
 
-1. Download **all-actions-for-github.zip** from the [latest release](https://github.com/amorphose/GitHub-All-Actions/releases/latest) and unzip it somewhere you'll keep it. (Or `git clone` this repository.)
+1. Download **all-actions-for-github.zip** from the [latest release](https://github.com/amorphose/All-Actions-for-GitHub/releases/latest) and unzip it somewhere you'll keep it. (Or `git clone` this repository.)
 2. Open your browser's extensions page:
    - Chrome / Brave: `chrome://extensions`
    - Edge: `edge://extensions`

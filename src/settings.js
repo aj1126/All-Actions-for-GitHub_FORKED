@@ -2,6 +2,7 @@ import { getUser, TokenError } from "./lib/github.js";
 import {
   getToken, setToken, clearToken, getLogin, setLogin, getSettings, setSettings, updateBadge,
 } from "./lib/storage.js";
+import { MISSED_AFTER_HOURS } from "./lib/runs.js";
 
 const VIEW_URL = "https://github.com/?all-actions";
 const TOKEN_URL =
@@ -65,6 +66,17 @@ async function onScopeChange() {
   await chrome.storage.local.remove("snapshot"); // so the next view load fetches with the new setting
 }
 
+function showDelay() {
+  const hours = Number($("delay").value);
+  $("delay-value").textContent = `${hours} ${hours === 1 ? "hour" : "hours"}`;
+}
+
+async function onDelayChange() {
+  await setSettings({ ...(await getSettings()), missedAfterHours: Number($("delay").value) });
+  // Re-check now, keeping the last results so a newly missed run still notifies.
+  if (await getToken()) chrome.runtime.sendMessage({ type: "refresh" }).catch(() => {});
+}
+
 async function onNotifyChange(e) {
   const box = e.target;
   if (box.checked) {
@@ -101,6 +113,10 @@ async function init() {
   $("scope-scheduled").checked = settings.scheduledOnly;
   $("scope-all").checked = !settings.scheduledOnly;
   $("notify").checked = settings.notify;
+  Object.assign($("delay"), { min: MISSED_AFTER_HOURS.min, max: MISSED_AFTER_HOURS.max, value: settings.missedAfterHours });
+  showDelay();
+  $("delay").addEventListener("input", showDelay);
+  $("delay").addEventListener("change", onDelayChange);
   $("notify").addEventListener("change", onNotifyChange);
   $("token-form").addEventListener("submit", onTokenSubmit);
   $("scope-scheduled").addEventListener("change", onScopeChange);

@@ -77,7 +77,7 @@ Results are cached, so the page opens instantly and refreshes when the last chec
 
 ### How "didn't run" works
 
-GitHub runs schedules in UTC and often starts them hours late at busy times, so a scheduled run counts as missed only when nothing has started **12 hours** after it was due. Late runs inside that window aren't flagged. Workflows created after the due time are ignored, and a schedule you turned off yourself shows as "Turned off" rather than as a problem.
+GitHub runs schedules in UTC and often starts them hours late at busy times, so a scheduled run counts as missed only when nothing has started **12 hours** after it was due. You can shorten that to anywhere from 1 to 12 hours in Settings. Late runs inside that window aren't flagged. Workflows created after the due time are ignored, and a schedule you turned off yourself shows as "Turned off" rather than as a problem.
 
 ## Roadmap
 

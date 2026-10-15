@@ -1,6 +1,6 @@
 // Thin wrappers over chrome.storage.local. Everything stays in this browser profile.
 
-const DEFAULT_SETTINGS = { scheduledOnly: true, notify: false };
+const DEFAULT_SETTINGS = { scheduledOnly: true, notify: false, missedAfterHours: 12 };
 
 export async function getToken() {
   const { token } = await chrome.storage.local.get("token");

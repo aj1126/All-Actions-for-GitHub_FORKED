@@ -39,6 +39,18 @@
           </fieldset>
         </li>
         <li>
+          <b>When to call a scheduled run missed</b>
+          <div class="delay">
+            <div class="delay-head">
+              <label for="delay">Mark as “Didn’t run” after</label>
+              <output class="delay-value" id="delay-value" for="delay">12 hours</output>
+            </div>
+            <input type="range" id="delay" min="1" max="12" step="1" value="12">
+            <div class="delay-ticks" aria-hidden="true"><span>1 hour</span><span>12 hours</span></div>
+          </div>
+          <p class="muted">GitHub often starts scheduled runs late, sometimes by several hours. A run only counts as missed once it's this late, which keeps a slow start from showing up as a problem.</p>
+        </li>
+        <li>
           <b>Notifications</b>
           <label class="check"><input type="checkbox" id="notify"> Show a desktop notification when a workflow fails or doesn't run</label>
           <p class="muted">Off by default. Your browser will ask for permission the first time you turn it on.</p>

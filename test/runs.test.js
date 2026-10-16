@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   classify, summarizeRepoRuns, sortEntries, tally, filterEntries, sinceDate, formatDuration, formatWhen, formatAgo,
-  applySchedules, expectedRunAt, firstFailedStep, newProblems,
+  applySchedules, expectedRunAt, firstFailedStep, newProblems, graceMs,
 } from "../src/lib/runs.js";
 
 const repo = { full_name: "me/blog", name: "blog", html_url: "https://github.com/me/blog", private: false };
@@ -100,6 +100,33 @@ test("expectedRunAt allows a 12-hour grace period", () => {
   assert.equal(expectedRunAt(crons, new Date("2026-10-13T16:59:00Z")).toISOString(), "2026-10-12T05:00:00.000Z");
   assert.equal(expectedRunAt(crons, new Date("2026-10-13T17:01:00Z")).toISOString(), "2026-10-13T05:00:00.000Z");
   assert.equal(expectedRunAt(["not a cron"], new Date()), null);
+});
+
+test("expectedRunAt uses a shorter grace period when one is set", () => {
+  const crons = ["0 5 * * *"];
+  const oneHour = graceMs(1);
+  assert.equal(expectedRunAt(crons, new Date("2026-10-13T05:59:00Z"), oneHour).toISOString(), "2026-10-12T05:00:00.000Z");
+  assert.equal(expectedRunAt(crons, new Date("2026-10-13T06:01:00Z"), oneHour).toISOString(), "2026-10-13T05:00:00.000Z");
+});
+
+test("graceMs keeps the setting between 1 and 12 hours", () => {
+  const h = 3600000;
+  assert.equal(graceMs(3), 3 * h);
+  assert.equal(graceMs("6"), 6 * h);
+  assert.equal(graceMs(0), 1 * h);
+  assert.equal(graceMs(48), 12 * h);
+  assert.equal(graceMs(undefined), 12 * h);
+});
+
+test("applySchedules flags a late run as missed only after the chosen delay", () => {
+  const now = new Date("2026-10-13T08:00:00Z");
+  const runs = [run(1, 10, "2026-10-12T05:20:00Z", "completed", "success")];
+  const crons = { ".github/workflows/wf10.yml": ["0 5 * * *"] };
+  const [twelve] = applySchedules(summarizeRepoRuns(repo, runs), repo, [wf(10)], crons, now);
+  assert.equal(twelve.state, "passed");
+  const [two] = applySchedules(summarizeRepoRuns(repo, runs), repo, [wf(10)], crons, now, graceMs(2));
+  assert.equal(two.state, "missed");
+  assert.equal(two.expectedAt, "2026-10-13T05:00:00.000Z");
 });
 
 test("applySchedules flags a daily job with no run today as missed", () => {

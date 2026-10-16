@@ -9,8 +9,16 @@ export const STATES = ["failed", "missed", "running", "other", "passed"];
 export const ATTENTION = new Set(["failed", "missed"]);
 
 // GitHub often starts scheduled runs late, especially at the top of the hour, so a run
-// only counts as missed once it's this late.
-export const MISSED_GRACE_MS = 12 * 60 * 60 * 1000;
+// only counts as missed once it's this late. People can pick 1 to 12 hours in Settings.
+export const MISSED_AFTER_HOURS = { min: 1, max: 12, default: 12 };
+export const MISSED_GRACE_MS = MISSED_AFTER_HOURS.default * 60 * 60 * 1000;
+
+/** The grace period in milliseconds for a saved hours setting, kept within the allowed range. */
+export function graceMs(hours) {
+  const h = Math.round(Number(hours));
+  if (!Number.isFinite(h)) return MISSED_GRACE_MS;
+  return Math.min(MISSED_AFTER_HOURS.max, Math.max(MISSED_AFTER_HOURS.min, h)) * 60 * 60 * 1000;
+}
 
 const FAILED = new Set(["failure", "timed_out", "startup_failure", "action_required"]);
 const OTHER = new Set(["cancelled", "skipped", "neutral", "stale"]);
@@ -78,12 +86,12 @@ export function summarizeRepoRuns(repo, runs, historySize = 10) {
 }
 
 /** When the schedule last should have fired, allowing for GitHub's delays; null if never. */
-export function expectedRunAt(crons, now) {
+export function expectedRunAt(crons, now, grace = MISSED_GRACE_MS) {
   let best = null;
   for (const cron of crons) {
     let t;
     try {
-      t = previousFire(cron, new Date(now.getTime() - MISSED_GRACE_MS));
+      t = previousFire(cron, new Date(now.getTime() - grace));
     } catch {
       continue; // a cron we can't parse; GitHub would reject it too
     }
@@ -100,7 +108,7 @@ export function expectedRunAt(crons, now) {
  * file couldn't be read. Workflows with a schedule but no recent runs get an entry
  * too, so a job that silently stopped still shows up.
  */
-export function applySchedules(entries, repo, workflows, crons, now) {
+export function applySchedules(entries, repo, workflows, crons, now, grace = MISSED_GRACE_MS) {
   const byId = new Map(entries.map((e) => [e.workflow.id, e]));
   for (const wf of workflows) {
     const list = crons[wf.path];
@@ -131,7 +139,7 @@ export function applySchedules(entries, repo, workflows, crons, now) {
       entry.note = "inactive";
       continue;
     }
-    const expected = expectedRunAt(list, now);
+    const expected = expectedRunAt(list, now, grace);
     if (!expected || (wf.created_at && expected < new Date(wf.created_at))) {
       if (!entry.latest) entry.state = "other"; // scheduled, but not due yet
       continue;

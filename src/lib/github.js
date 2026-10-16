@@ -1,6 +1,6 @@
 // Minimal GitHub REST client for the extension. The token is only ever sent to api.github.com.
 
-import { sinceDate, summarizeRepoRuns, applySchedules, expectedRunAt, firstFailedStep } from "./runs.js";
+import { sinceDate, summarizeRepoRuns, applySchedules, expectedRunAt, firstFailedStep, MISSED_GRACE_MS } from "./runs.js";
 import { extractCrons } from "./cron.js";
 
 const API = "https://api.github.com";
@@ -176,7 +176,9 @@ const isFatal = (e) => e instanceof TokenError || e instanceof RateLimitError;
  */
 export async function loadSnapshot(
   token,
-  { scheduledOnly = true, days = 14, onProgress, previous = null, scheduleCache = {}, httpCache = {} } = {},
+  {
+    scheduledOnly = true, days = 14, grace = MISSED_GRACE_MS, onProgress, previous = null, scheduleCache = {}, httpCache = {},
+  } = {},
 ) {
   const now = new Date();
   const windowStart = new Date(now.getTime() - days * 86400000);
@@ -235,13 +237,13 @@ export async function loadSnapshot(
       // A schedule that fires less often than the window covers: look further back.
       const seen = new Set(runs.filter((r) => r.event === "schedule").map((r) => r.workflow_id));
       for (const wf of workflows) {
-        const expected = crons[wf.path]?.length ? expectedRunAt(crons[wf.path], now) : null;
+        const expected = crons[wf.path]?.length ? expectedRunAt(crons[wf.path], now, grace) : null;
         if (!expected || expected >= windowStart || seen.has(wf.id) || wf.state !== "active") continue;
         const older = await lastScheduledRun(token, repo, wf.id, http);
         if (older) runs.push(older);
       }
 
-      const entries = applySchedules(summarizeRepoRuns(repo, runs), repo, workflows, crons, now);
+      const entries = applySchedules(summarizeRepoRuns(repo, runs), repo, workflows, crons, now, grace);
 
       for (const e of entries) {
         if (e.latest?.conclusion !== "failure") continue;

@@ -1,6 +1,6 @@
 import { loadSnapshot, TokenError, RateLimitError } from "./lib/github.js";
 import { getToken, getSettings, getSnapshot, setSnapshot, updateBadge } from "./lib/storage.js";
-import { newProblems } from "./lib/runs.js";
+import { newProblems, graceMs } from "./lib/runs.js";
 
 export const VIEW_URL = "https://github.com/?all-actions";
 const REFRESH_MINUTES = 30;
@@ -13,13 +13,14 @@ function refresh() {
   running = (async () => {
     const token = await getToken();
     if (!token) return;
-    const { scheduledOnly, notify } = await getSettings();
+    const { scheduledOnly, notify, missedAfterHours } = await getSettings();
     const previous = await getSnapshot();
     const { scheduleCache = {}, httpCache = {} } = await chrome.storage.local.get(["scheduleCache", "httpCache"]);
     await chrome.storage.local.set({ refreshState: { running: true, done: 0, total: 0, at: Date.now() } });
     try {
       const result = await loadSnapshot(token, {
         scheduledOnly,
+        grace: graceMs(missedAfterHours),
         previous,
         scheduleCache,
         httpCache,

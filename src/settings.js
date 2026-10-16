@@ -79,6 +79,7 @@ async function onDelayChange() {
 
 async function onNotifyChange(e) {
   const box = e.target;
+  const key = box.id === "notify-pass" ? "notifyPass" : "notify";
   if (box.checked) {
     // Must be requested straight from the click, before anything else is awaited.
     const granted = await chrome.permissions.request({ permissions: ["notifications"] }).catch(() => false);
@@ -88,7 +89,7 @@ async function onNotifyChange(e) {
       return;
     }
   }
-  await setSettings({ ...(await getSettings()), notify: box.checked });
+  await setSettings({ ...(await getSettings()), [key]: box.checked });
 }
 
 async function onDone() {
@@ -118,6 +119,8 @@ async function init() {
   $("delay").addEventListener("input", showDelay);
   $("delay").addEventListener("change", onDelayChange);
   $("notify").addEventListener("change", onNotifyChange);
+  $("notify-pass").checked = settings.notifyPass;
+  $("notify-pass").addEventListener("change", onNotifyChange);
   $("token-form").addEventListener("submit", onTokenSubmit);
   $("scope-scheduled").addEventListener("change", onScopeChange);
   $("scope-all").addEventListener("change", onScopeChange);

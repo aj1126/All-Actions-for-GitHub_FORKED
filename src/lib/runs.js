@@ -203,6 +203,21 @@ export function newProblems(previous, current) {
   });
 }
 
+/**
+ * Entries whose latest run newly passed since the previous results, for the optional
+ * "workflow passed" notification: a new successful run, or one that was still running.
+ */
+export function newPasses(previous, current) {
+  const before = new Map((previous?.entries ?? []).map((e) => [e.key, e]));
+  const since = Date.parse(previous?.fetchedAt ?? 0) || 0;
+  return current.entries.filter((e) => {
+    if (e.state !== "passed" || !e.latest) return false;
+    const old = before.get(e.key);
+    if (old) return old.state !== "passed" || old.latest?.id !== e.latest.id;
+    return Date.parse(e.latest.updatedAt) > since; // a workflow the last check didn't list
+  });
+}
+
 /** Filter entries by a tab ("attention", "all", or a state) and a free-text query. */
 export function filterEntries(entries, tab, query = "") {
   const q = query.trim().toLowerCase();

@@ -1,6 +1,6 @@
 import { loadSnapshot, TokenError, RateLimitError } from "./lib/github.js";
 import { getToken, getSettings, getSnapshot, setSnapshot, updateBadge } from "./lib/storage.js";
-import { newProblems, graceMs } from "./lib/runs.js";
+import { newProblems, newPasses, graceMs } from "./lib/runs.js";
 
 export const VIEW_URL = "https://github.com/?all-actions";
 const REFRESH_MINUTES = 30;
@@ -13,7 +13,7 @@ function refresh() {
   running = (async () => {
     const token = await getToken();
     if (!token) return;
-    const { scheduledOnly, notify, missedAfterHours } = await getSettings();
+    const { scheduledOnly, notify, notifyPass, missedAfterHours } = await getSettings();
     const previous = await getSnapshot();
     const { scheduleCache = {}, httpCache = {} } = await chrome.storage.local.get(["scheduleCache", "httpCache"]);
     await chrome.storage.local.set({ refreshState: { running: true, done: 0, total: 0, at: Date.now() } });
@@ -28,7 +28,10 @@ function refresh() {
       });
       await chrome.storage.local.set({ scheduleCache: result.scheduleCache, httpCache: result.httpCache });
       await setSnapshot(result.snapshot);
-      if (notify && previous?.fetchedAt) await notifyProblems(newProblems(previous, result.snapshot));
+      if (previous?.fetchedAt) {
+        if (notify) await notifyProblems(newProblems(previous, result.snapshot));
+        if (notifyPass) await notifyPasses(newPasses(previous, result.snapshot));
+      }
       await chrome.storage.local.set({ refreshState: { running: false } });
     } catch (e) {
       const kind = e instanceof TokenError ? "token" : e instanceof RateLimitError ? "rate" : "other";
@@ -44,13 +47,22 @@ function refresh() {
 
 /** Desktop notification for newly failed or missed workflows (opt-in from Settings). */
 async function notifyProblems(problems) {
-  if (!problems.length) return;
-  if (!(await chrome.permissions.contains({ permissions: ["notifications"] }))) return;
-  const describe = (e) => `${e.repo.name} / ${e.workflow.name}: ${e.state === "failed" ? "failed" : "didn't run"}`;
   const title = problems.length === 1 ? "A workflow needs attention" : `${problems.length} workflows need attention`;
-  const lines = problems.slice(0, 4).map(describe);
-  if (problems.length > 4) lines.push(`and ${problems.length - 4} more`);
-  await chrome.notifications.create(`all-actions-${Date.now()}`, {
+  await showNotification(problems, title, (e) => (e.state === "failed" ? "failed" : "didn't run"), "problem");
+}
+
+/** Desktop notification for workflows whose latest run just passed (separate opt-in). */
+async function notifyPasses(passes) {
+  const title = passes.length === 1 ? "A workflow passed" : `${passes.length} workflows passed`;
+  await showNotification(passes, title, () => "passed", "pass");
+}
+
+async function showNotification(entries, title, outcome, kind) {
+  if (!entries.length) return;
+  if (!(await chrome.permissions.contains({ permissions: ["notifications"] }))) return;
+  const lines = entries.slice(0, 4).map((e) => `${e.repo.name} / ${e.workflow.name}: ${outcome(e)}`);
+  if (entries.length > 4) lines.push(`and ${entries.length - 4} more`);
+  await chrome.notifications.create(`all-actions-${kind}-${Date.now()}`, {
     type: "basic",
     iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
     title,

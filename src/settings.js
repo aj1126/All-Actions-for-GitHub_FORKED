@@ -15,7 +15,19 @@ const TOKEN_URL =
     contents: "read",
   });
 
+const REPO_URL = "https://github.com/amorphose/All-Actions-for-GitHub";
+
 const $ = (id) => document.getElementById(id);
+
+/** Version line and a "Report a problem" link that starts the issue with the version and browser. */
+function showAbout() {
+  const { version } = chrome.runtime.getManifest();
+  $("about-version").textContent = `All Actions for GitHub ${version}`;
+  const brands = navigator.userAgentData?.brands?.map((b) => `${b.brand} ${b.version}`) ?? [];
+  const browser = brands.find((b) => !/Chromium|Not.?A.?Brand/i.test(b)) || brands[0] || navigator.userAgent;
+  const body = `**What happened?**\n\n\n**What did you expect?**\n\n\n---\nExtension version: ${version}\nBrowser: ${browser}\n`;
+  $("report-link").href = `${REPO_URL}/issues/new?${new URLSearchParams({ body })}`;
+}
 
 function setStatus(text, kind = "") {
   $("token-status").textContent = text;
@@ -110,6 +122,7 @@ async function onDisconnect() {
 
 async function init() {
   $("token-link").href = TOKEN_URL;
+  showAbout();
   const settings = await getSettings();
   $("scope-scheduled").checked = settings.scheduledOnly;
   $("scope-all").checked = !settings.scheduledOnly;

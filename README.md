@@ -10,7 +10,7 @@ A browser extension that adds an account-wide **All actions** view to GitHub, ne
 - Problems sort to the top: runs that **failed** (with the step that failed) and scheduled workflows that **didn't run** when they were due, including ones GitHub switched off after 60 days without activity.
 - Each row shows the schedule in plain words in your own time zone with the UTC time GitHub uses alongside ("Daily at 04:05 (08:05 UTC)"), the latest run, and a strip of the last 10 runs. Click anything to open it on GitHub.
 - It checks again in the background every 30 minutes, and the toolbar icon shows how many workflows need attention.
-- Optional desktop notifications when a workflow fails or doesn't run (off by default).
+- Optional desktop notifications when a workflow fails or doesn't run, and separately when one passes (both off by default).
 - It runs entirely in your browser. There's no server: it talks to GitHub's API directly with your own read-only token.
 
 > Status: early version (0.6). Works in Chrome, Edge, Brave and other Chromium browsers. Firefox support comes later.

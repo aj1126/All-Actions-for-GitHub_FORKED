@@ -15,7 +15,19 @@ const TOKEN_URL =
     contents: "read",
   });
 
+const REPO_URL = "https://github.com/amorphose/All-Actions-for-GitHub";
+
 const $ = (id) => document.getElementById(id);
+
+/** Version line and a "Report a problem" link that starts the issue with the version and browser. */
+function showAbout() {
+  const { version } = chrome.runtime.getManifest();
+  $("about-version").textContent = `All Actions for GitHub ${version}`;
+  const brands = navigator.userAgentData?.brands?.map((b) => `${b.brand} ${b.version}`) ?? [];
+  const browser = brands.find((b) => !/Chromium|Not.?A.?Brand/i.test(b)) || brands[0] || navigator.userAgent;
+  const body = `**What happened?**\n\n\n**What did you expect?**\n\n\n---\nExtension version: ${version}\nBrowser: ${browser}\n`;
+  $("report-link").href = `${REPO_URL}/issues/new?${new URLSearchParams({ body })}`;
+}
 
 function setStatus(text, kind = "") {
   $("token-status").textContent = text;
@@ -79,6 +91,7 @@ async function onDelayChange() {
 
 async function onNotifyChange(e) {
   const box = e.target;
+  const key = box.id === "notify-pass" ? "notifyPass" : "notify";
   if (box.checked) {
     // Must be requested straight from the click, before anything else is awaited.
     const granted = await chrome.permissions.request({ permissions: ["notifications"] }).catch(() => false);
@@ -88,7 +101,7 @@ async function onNotifyChange(e) {
       return;
     }
   }
-  await setSettings({ ...(await getSettings()), notify: box.checked });
+  await setSettings({ ...(await getSettings()), [key]: box.checked });
 }
 
 async function onDone() {
@@ -109,6 +122,7 @@ async function onDisconnect() {
 
 async function init() {
   $("token-link").href = TOKEN_URL;
+  showAbout();
   const settings = await getSettings();
   $("scope-scheduled").checked = settings.scheduledOnly;
   $("scope-all").checked = !settings.scheduledOnly;
@@ -118,6 +132,8 @@ async function init() {
   $("delay").addEventListener("input", showDelay);
   $("delay").addEventListener("change", onDelayChange);
   $("notify").addEventListener("change", onNotifyChange);
+  $("notify-pass").checked = settings.notifyPass;
+  $("notify-pass").addEventListener("change", onNotifyChange);
   $("token-form").addEventListener("submit", onTokenSubmit);
   $("scope-scheduled").addEventListener("change", onScopeChange);
   $("scope-all").addEventListener("change", onScopeChange);

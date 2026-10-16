@@ -203,6 +203,23 @@ export function newProblems(previous, current) {
   });
 }
 
+/**
+ * Entries whose latest run newly passed since the previous results, for the optional
+ * "workflow passed" notification: a new successful run, or one that was still running.
+ */
+export function newPasses(previous, current) {
+  const before = new Map((previous?.entries ?? []).map((e) => [e.key, e]));
+  const since = Date.parse(previous?.fetchedAt ?? 0) || 0;
+  return current.entries.filter((e) => {
+    if (e.state !== "passed" || !e.latest) return false;
+    const old = before.get(e.key);
+    // Same run as before: only news if it was still going. (A missed flag clearing because
+    // the delay setting changed isn't a new pass.)
+    if (old) return old.latest?.id !== e.latest.id || old.state === "running";
+    return Date.parse(e.latest.updatedAt) > since; // a workflow the last check didn't list
+  });
+}
+
 /** Filter entries by a tab ("attention", "all", or a state) and a free-text query. */
 export function filterEntries(entries, tab, query = "") {
   const q = query.trim().toLowerCase();

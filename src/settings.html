@@ -53,7 +53,8 @@
         <li>
           <b>Notifications</b>
           <label class="check"><input type="checkbox" id="notify"> Show a desktop notification when a workflow fails or doesn't run</label>
-          <p class="muted">Off by default. Your browser will ask for permission the first time you turn it on.</p>
+          <label class="check"><input type="checkbox" id="notify-pass"> Show a desktop notification when a workflow passes</label>
+          <p class="muted">Both are off by default. Your browser will ask for permission the first time you turn one on.</p>
         </li>
       </ol>
       <div class="actions">
@@ -62,6 +63,11 @@
         <button class="btn primary" type="button" id="done">Open All actions</button>
       </div>
     </section>
+    <footer class="about muted">
+      <span id="about-version">All Actions for GitHub</span>
+      · <a id="report-link" href="https://github.com/amorphose/All-Actions-for-GitHub/issues/new" target="_blank" rel="noopener">Report a problem ↗</a>
+      · <a href="https://github.com/amorphose/All-Actions-for-GitHub" target="_blank" rel="noopener">Source code ↗</a>
+    </footer>
   </main>
 </body>
 </html>

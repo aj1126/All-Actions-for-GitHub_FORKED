@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   classify, summarizeRepoRuns, sortEntries, tally, filterEntries, sinceDate, formatDuration, formatWhen, formatAgo,
-  applySchedules, expectedRunAt, firstFailedStep, newProblems, graceMs,
+  applySchedules, expectedRunAt, firstFailedStep, newProblems, newPasses, graceMs,
 } from "../src/lib/runs.js";
 
 const repo = { full_name: "me/blog", name: "blog", html_url: "https://github.com/me/blog", private: false };
@@ -183,4 +183,29 @@ test("newProblems only reports new failures and new misses", () => {
   const prev = { entries: [mk("a", "failed", 1), mk("b", "missed", 2, "t1"), mk("c", "passed", 3)] };
   const cur = { entries: [mk("a", "failed", 1), mk("b", "missed", 2, "t2"), mk("c", "failed", 4), mk("d", "passed", 5)] };
   assert.deepEqual(newProblems(prev, cur).map((e) => e.key), ["b", "c"]);
+});
+
+test("newPasses reports new successful runs and runs that finished passing", () => {
+  const mk = (key, state, id, updatedAt = "2026-10-16T10:00:00Z") => ({ key, state, latest: { id, updatedAt } });
+  const prev = {
+    fetchedAt: "2026-10-16T09:00:00Z",
+    entries: [
+      mk("a", "passed", 1), mk("b", "passed", 2), mk("c", "running", 3), mk("d", "missed", 4), mk("e", "passed", 5),
+      mk("i", "missed", 11),
+    ],
+  };
+  const cur = {
+    entries: [
+      mk("a", "passed", 1), // same run as before
+      mk("b", "passed", 6), // a new successful run
+      mk("c", "passed", 3), // was running, now passed
+      mk("d", "passed", 7), // the late run finally came and passed
+      mk("e", "failed", 8),
+      mk("f", "passed", 9), // new to the list, finished after the last check
+      mk("g", "passed", 10, "2026-10-16T08:00:00Z"), // new to the list, but old news
+      { key: "h", state: "passed", latest: null },
+      mk("i", "passed", 11), // no longer flagged as missed after the delay changed, but no new run
+    ],
+  };
+  assert.deepEqual(newPasses(prev, cur).map((e) => e.key), ["b", "c", "d", "f"]);
 });

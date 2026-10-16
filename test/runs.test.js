@@ -189,7 +189,10 @@ test("newPasses reports new successful runs and runs that finished passing", () 
   const mk = (key, state, id, updatedAt = "2026-10-16T10:00:00Z") => ({ key, state, latest: { id, updatedAt } });
   const prev = {
     fetchedAt: "2026-10-16T09:00:00Z",
-    entries: [mk("a", "passed", 1), mk("b", "passed", 2), mk("c", "running", 3), mk("d", "missed", 4), mk("e", "passed", 5)],
+    entries: [
+      mk("a", "passed", 1), mk("b", "passed", 2), mk("c", "running", 3), mk("d", "missed", 4), mk("e", "passed", 5),
+      mk("i", "missed", 11),
+    ],
   };
   const cur = {
     entries: [
@@ -201,6 +204,7 @@ test("newPasses reports new successful runs and runs that finished passing", () 
       mk("f", "passed", 9), // new to the list, finished after the last check
       mk("g", "passed", 10, "2026-10-16T08:00:00Z"), // new to the list, but old news
       { key: "h", state: "passed", latest: null },
+      mk("i", "passed", 11), // no longer flagged as missed after the delay changed, but no new run
     ],
   };
   assert.deepEqual(newPasses(prev, cur).map((e) => e.key), ["b", "c", "d", "f"]);

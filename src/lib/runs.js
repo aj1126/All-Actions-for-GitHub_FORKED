@@ -213,7 +213,9 @@ export function newPasses(previous, current) {
   return current.entries.filter((e) => {
     if (e.state !== "passed" || !e.latest) return false;
     const old = before.get(e.key);
-    if (old) return old.state !== "passed" || old.latest?.id !== e.latest.id;
+    // Same run as before: only news if it was still going. (A missed flag clearing because
+    // the delay setting changed isn't a new pass.)
+    if (old) return old.latest?.id !== e.latest.id || old.state === "running";
     return Date.parse(e.latest.updatedAt) > since; // a workflow the last check didn't list
   });
 }

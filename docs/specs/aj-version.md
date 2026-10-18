@@ -9,7 +9,7 @@ Sonnet / medium. **Transcription only:** every line of code is in `docs/specs/aj
 **Spec branch:** `spec/aj-version` (this file, the patch, the tests, the model pin). It leaves `manifest.json` and `src/` exactly as at the base.
 **Work branch:** `build/aj-version`, created from `origin/spec/aj-version`. Never commit to `main` or `spec/aj-version`.
 **Shell:** POSIX `sh`/`bash` (the cloud session is Linux). Every command runs from the repository root.
-**Written:** 2026-10-18 09:13-09:45, Opus 5.5 (sub1). The patch was built and run by Opus first in a scratch worktree on Windows
+**Written:** 2026-10-18 09:13-09:37, Opus 5.5 (sub1). The patch was built and run by Opus first in a scratch worktree on Windows
 (node 22.16.0, Git Bash): `npm test` 54/54; the same tests on the base code 27 pass / 27 fail. Executed in Edge 155.0.4283.60 too (results
 in "Evidence" below). This spec's T, V and Commit text was then rehearsed verbatim in Git Bash on a fresh shallow, single-branch clone of a scratch
 bare copy of the repo (path with a space, LF checkout). The first rehearsal found 2 wrong EXPECTs (staged-status order, a possible

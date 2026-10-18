@@ -7,13 +7,15 @@ import { readFileSync } from "node:fs";
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("The github.com view never touches storage.local or the token (R2)", () => {
+  // Calls only: a comment may name storage.local, and err.kind === "token" is an error kind, not the key.
+  const localCall = /chrome\.storage\.local\.\w+\(/;
   const view = read("src/view.js");
-  assert.equal(view.includes("storage.local"), false, "view.js uses storage.local");
-  assert.equal(/["']token["']/.test(view), false, "view.js names the token key");
+  assert.equal(localCall.test(view), false, "view.js calls storage.local");
+  assert.equal(/\.get\([^)]*["']token["']/.test(view), false, "view.js reads the token key");
   assert.equal(/changes\.token\b/.test(view), false, "view.js reads token changes");
   assert.ok(view.includes('from "./lib/viewstate.js"'), "view.js imports viewstate.js");
   const content = read("src/content.js");
-  assert.equal(content.includes("storage.local"), false, "content.js uses storage.local");
+  assert.equal(localCall.test(content), false, "content.js calls storage.local");
   assert.ok(content.includes('chrome.storage.session.get("snapshot")'), "content.js reads the snapshot from session");
   assert.ok(content.includes('area === "session"'), "content.js listens to session changes");
 });

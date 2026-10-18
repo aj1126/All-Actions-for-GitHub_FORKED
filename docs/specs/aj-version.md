@@ -11,7 +11,9 @@ Sonnet / medium. **Transcription only:** every line of code is in `docs/specs/aj
 **Shell:** POSIX `sh`/`bash` (the cloud session is Linux). Every command runs from the repository root.
 **Written:** 2026-10-18 09:13-09:45, Opus 5.5 (sub1). The patch was built and run by Opus first in a scratch worktree on Windows
 (node 22.16.0, Git Bash): `npm test` 54/54; the same tests on the base code 27 pass / 27 fail. Executed in Edge 155.0.4283.60 too (results
-in "Evidence" below). This spec's T, V and Commit text was then rehearsed verbatim in Git Bash on a fresh clone.
+in "Evidence" below). This spec's T, V and Commit text was then rehearsed verbatim in Git Bash on a fresh shallow, single-branch clone of a scratch
+bare copy of the repo (path with a space, LF checkout). The first rehearsal found 2 wrong EXPECTs (staged-status order, a possible
+tracking line); fixed, then re-rehearsed clean.
 **Reuse:** the repo's own `node --test` suite and its fake-`fetch` style (`test/github.test.js`), extended with two shared fakes in
 `test-support/` (outside `test/`, because `node --test` runs every file under a `test/` folder). No new scripts, dependencies or build steps.
 **Gate-check pins** (copied into the B2 queue entry; run on AJ's machine):
@@ -124,8 +126,9 @@ node --version | cut -d. -f1
 ## T2 -- branch and apply
 
 ```sh
-git switch -c build/aj-version origin/spec/aj-version
-git branch --unset-upstream 2>/dev/null; git rev-parse --abbrev-ref '@{u}' 2>&1 | head -1
+git switch --no-track -c build/aj-version origin/spec/aj-version
+# EXPECT: Switched to a new branch 'build/aj-version'
+git rev-parse --abbrev-ref '@{u}' 2>&1 | head -1
 # EXPECT: fatal: no upstream configured for branch 'build/aj-version'
 npm test 2>&1 | grep -E '^# (tests|pass|fail) '
 # EXPECT (the new tests fail before the patch):
@@ -198,6 +201,7 @@ git add src/settings.html src/settings.js src/view.css src/view.js
 git rm -q docs/specs/aj-version.patch
 git status --porcelain
 # EXPECT exactly (all staged):
+# D  docs/specs/aj-version.patch
 # M  manifest.json
 # M  src/background.js
 # M  src/content.js
@@ -209,7 +213,6 @@ git status --porcelain
 # M  src/settings.js
 # M  src/view.css
 # M  src/view.js
-# D  docs/specs/aj-version.patch
 git commit -q -s -m "feat: AJ build 1 - runs I started, scheduled runs never missed by a full page, token only to api.github.com and out of content scripts" -m "Spec: docs/specs/aj-version.md (patch sha256 027fa581d17a8c76). Fork issue #1, review R1 R2 R10."
 git status --porcelain
 # EXPECT: no output
@@ -257,8 +260,9 @@ git push -u origin build/aj-version 2>&1 | tail -1
 ## Opus review after `/clear` (not Sonnet's job)
 
 1. Fetch `build/aj-version` into a local worktree (`git worktree add --no-track -b review/aj-version <path> origin/build/aj-version`).
-   Re-run T1's base and patch checks, V1-V5 and `git diff origin/spec/aj-version --stat`. EXPECT: 12 files: the 11 patch paths
-   (297 insertions, 88 deletions) plus the deleted patch.
+   Re-run T1's base and patch checks, V1-V5 and `git diff origin/spec/aj-version --stat | tail -1`. EXPECT: `12 files changed, 297
+   insertions(+), 883 deletions(-)` (the 11 patch paths, 297+/88-, plus the deleted 795-line patch). Also check the commit message
+   carries a `Signed-off-by:` line.
 2. Byte-compare: `git diff origin/spec/aj-version origin/build/aj-version -- manifest.json src` equals the patch's content (apply the patch
    to a scratch tree of the spec tip and `git diff --no-index` it against the build tree).
 3. Re-run the review's own probes on the build:

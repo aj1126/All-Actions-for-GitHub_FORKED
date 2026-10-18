@@ -1,6 +1,6 @@
 import { getUser, TokenError } from "./lib/github.js";
 import {
-  getToken, setToken, clearToken, getLogin, setLogin, getSettings, setSettings, updateBadge,
+  getToken, setToken, clearToken, getLogin, setLogin, getSettings, setSettings, updateBadge, clearSnapshot,
 } from "./lib/storage.js";
 import { MISSED_AFTER_HOURS } from "./lib/runs.js";
 
@@ -55,7 +55,7 @@ async function onTokenSubmit(e) {
     await setToken(token);
     await setLogin(user.login);
     // Results from a previous token may belong to another account.
-    await chrome.storage.local.remove("snapshot");
+    await clearSnapshot();
     await updateBadge(null);
     $("token-input").value = "";
     await showConnected();
@@ -73,9 +73,9 @@ async function onTokenSubmit(e) {
 }
 
 async function onScopeChange() {
-  const settings = await getSettings();
-  await setSettings({ ...settings, scheduledOnly: $("scope-scheduled").checked });
-  await chrome.storage.local.remove("snapshot"); // so the next view load fetches with the new setting
+  const scope = document.querySelector('input[name="scope"]:checked').value;
+  await setSettings({ ...(await getSettings()), scope });
+  await clearSnapshot(); // so the next view load fetches with the new setting
 }
 
 function showDelay() {
@@ -91,7 +91,7 @@ async function onDelayChange() {
 
 async function onNotifyChange(e) {
   const box = e.target;
-  const key = box.id === "notify-pass" ? "notifyPass" : "notify";
+  const key = { "notify-pass": "notifyPass", "notify-mine": "notifyMine" }[box.id] ?? "notify";
   if (box.checked) {
     // Must be requested straight from the click, before anything else is awaited.
     const granted = await chrome.permissions.request({ permissions: ["notifications"] }).catch(() => false);
@@ -124,8 +124,7 @@ async function init() {
   $("token-link").href = TOKEN_URL;
   showAbout();
   const settings = await getSettings();
-  $("scope-scheduled").checked = settings.scheduledOnly;
-  $("scope-all").checked = !settings.scheduledOnly;
+  $(`scope-${settings.scope}`).checked = true;
   $("notify").checked = settings.notify;
   Object.assign($("delay"), { min: MISSED_AFTER_HOURS.min, max: MISSED_AFTER_HOURS.max, value: settings.missedAfterHours });
   showDelay();
@@ -134,9 +133,10 @@ async function init() {
   $("notify").addEventListener("change", onNotifyChange);
   $("notify-pass").checked = settings.notifyPass;
   $("notify-pass").addEventListener("change", onNotifyChange);
+  $("notify-mine").checked = settings.notifyMine;
+  $("notify-mine").addEventListener("change", onNotifyChange);
   $("token-form").addEventListener("submit", onTokenSubmit);
-  $("scope-scheduled").addEventListener("change", onScopeChange);
-  $("scope-all").addEventListener("change", onScopeChange);
+  for (const id of ["scope-scheduled", "scope-mine", "scope-all"]) $(id).addEventListener("change", onScopeChange);
   $("done").addEventListener("click", onDone);
   $("disconnect").addEventListener("click", onDisconnect);
   await showConnected();

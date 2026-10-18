@@ -35,8 +35,10 @@
           <fieldset class="radio">
             <legend class="sr-only">Which runs to show</legend>
             <label><input type="radio" name="scope" value="scheduled" id="scope-scheduled" checked> Scheduled workflows only (recommended)</label>
+            <label><input type="radio" name="scope" value="mine" id="scope-mine"> Scheduled workflows and runs I started</label>
             <label><input type="radio" name="scope" value="all" id="scope-all"> Every workflow run</label>
           </fieldset>
+          <p class="muted">“Runs I started” adds the pushes, pull requests, manual runs and re-runs of the account you connected, as their own rows next to the scheduled ones. “Every workflow run” also includes runs started by other people and bots.</p>
         </li>
         <li>
           <b>When to call a scheduled run missed</b>
@@ -53,8 +55,9 @@
         <li>
           <b>Notifications</b>
           <label class="check"><input type="checkbox" id="notify"> Show a desktop notification when a workflow fails or doesn't run</label>
+          <label class="check"><input type="checkbox" id="notify-mine"> Show a desktop notification when a run you started fails</label>
           <label class="check"><input type="checkbox" id="notify-pass"> Show a desktop notification when a workflow passes</label>
-          <p class="muted">Both are off by default. Your browser will ask for permission the first time you turn one on.</p>
+          <p class="muted">All three are off by default. Your browser will ask for permission the first time you turn one on.</p>
         </li>
       </ol>
       <div class="actions">

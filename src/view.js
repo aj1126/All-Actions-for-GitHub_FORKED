@@ -1,18 +1,13 @@
 // The All actions list. Rendered into a shadow root so GitHub's styles and ours can't
 // collide; colors come from GitHub's own CSS variables when they're available.
-// Data comes from chrome.storage (written by the background worker), so this module
+// Data comes from chrome.storage.session (written by the background worker), so this module
 // works the same inside github.com and on an extension page.
 
 import {
-  sortEntries, tally, filterEntries, formatDuration, formatWhen, formatAgo, describeCron,
+  sortEntries, tally, filterEntries, formatDuration, formatWhen, formatAgo, scopeOf, SCOPE_TEXT, leadParts, capNote,
 } from "./lib/runs.js";
+import { isRunning, readViewState, isViewChange, shouldRefresh } from "./lib/viewstate.js";
 
-const STALE_MS = 5 * 60 * 1000;
-// A refresh that hasn't reported progress for this long was interrupted (for example the
-// background worker was stopped), so the view stops treating it as running.
-const STUCK_MS = 2 * 60 * 1000;
-
-const isRunning = (r) => Boolean(r?.running && Date.now() - (r.at || 0) < STUCK_MS);
 const HISTORY = 10;
 
 const LABELS = {
@@ -77,6 +72,7 @@ export async function mountView(host) {
     banner: el("div", { class: "banner", role: "status", hidden: true }),
     count: el("strong"),
     rows: el("div"),
+    cap: el("p", { class: "capnote", hidden: true }),
     errors: el("details", { class: "errors", hidden: true }, el("summary"), el("ul")),
   };
 
@@ -116,6 +112,7 @@ export async function mountView(host) {
             ),
             ui.rows,
           ),
+          ui.cap,
           el(
             "div",
             { class: "legend" },
@@ -127,7 +124,8 @@ export async function mountView(host) {
     ),
   );
 
-  const state = { tab: null, query: "", snapshot: null, refreshState: null, hasToken: false };
+  // hasToken: true or false once the background worker has told us, null before that.
+  const state = { tab: null, query: "", snapshot: null, refreshState: null, hasToken: null };
 
   ui.search.addEventListener("input", () => {
     state.query = ui.search.value;
@@ -145,7 +143,7 @@ export async function mountView(host) {
       ui.meta.textContent = "";
       return;
     }
-    const what = s.scheduledOnly ? "Scheduled workflows" : "All workflows";
+    const what = SCOPE_TEXT[scopeOf(s)].meta;
     ui.meta.textContent = `${what} in ${s.repoCount} repositories · checked ${formatAgo(Date.now() - Date.parse(s.fetchedAt))}`;
   }
 
@@ -218,7 +216,9 @@ export async function mountView(host) {
     const shown = filterEntries(entries, tab, state.query);
     ui.count.textContent = `${shown.length} ${shown.length === 1 ? "workflow" : "workflows"}`;
     const rows = [];
-    if (!state.hasToken) {
+    if (state.hasToken === null) {
+      rows.push(el("div", { class: "empty-state" }, "Loading…"));
+    } else if (!state.hasToken) {
       rows.push(
         el(
           "div",
@@ -230,15 +230,7 @@ export async function mountView(host) {
     } else if (!s?.fetchedAt) {
       rows.push(el("div", { class: "empty-state" }, "Checking your repositories for the first time…"));
     } else if (!entries.length) {
-      rows.push(
-        el(
-          "div",
-          { class: "empty-state" },
-          s.scheduledOnly
-            ? "No scheduled workflow runs in the last 14 days in the repositories this token can see."
-            : "No workflow runs in the last 14 days in the repositories this token can see.",
-        ),
-      );
+      rows.push(el("div", { class: "empty-state" }, SCOPE_TEXT[scopeOf(s)].empty));
     } else if (!shown.length) {
       rows.push(
         el(
@@ -258,6 +250,8 @@ export async function mountView(host) {
       }
     }
     ui.rows.replaceChildren(...rows);
+    ui.cap.textContent = capNote(s?.capped);
+    ui.cap.hidden = !ui.cap.textContent;
 
     const errs = s?.errors ?? [];
     ui.errors.hidden = !errs.length;
@@ -267,25 +261,24 @@ export async function mountView(host) {
     }
   }
 
-  const stored = await chrome.storage.local.get(["snapshot", "refreshState", "token"]);
-  state.snapshot = stored.snapshot?.fetchedAt ? stored.snapshot : null;
-  state.refreshState = stored.refreshState || null;
-  state.hasToken = Boolean(stored.token);
+  Object.assign(state, await readViewState());
   render();
+  // storage.session is empty after a browser restart until the background worker fills it.
+  if (state.hasToken === null) send({ type: "sync-view" });
 
   const onChange = (changes, area) => {
-    if (area !== "local") return;
+    if (!isViewChange(area, changes)) return;
+    const known = state.hasToken !== null;
     if (changes.snapshot) state.snapshot = changes.snapshot.newValue?.fetchedAt ? changes.snapshot.newValue : null;
     if (changes.refreshState) state.refreshState = changes.refreshState.newValue || null;
-    if (changes.token) state.hasToken = Boolean(changes.token.newValue);
-    if (changes.snapshot || changes.refreshState || changes.token) render();
+    if (changes.hasToken) state.hasToken = typeof changes.hasToken.newValue === "boolean" ? changes.hasToken.newValue : null;
+    render();
+    if (!known && shouldRefresh(state)) send({ type: "refresh" });
   };
   chrome.storage.onChanged.addListener(onChange);
   const timer = setInterval(renderMeta, 30000);
 
-  if (state.hasToken && !isRunning(state.refreshState) && (!state.snapshot || Date.now() - Date.parse(state.snapshot.fetchedAt) > STALE_MS)) {
-    send({ type: "refresh" });
-  }
+  if (shouldRefresh(state)) send({ type: "refresh" });
 
   return () => {
     chrome.storage.onChanged.removeListener(onChange);
@@ -301,9 +294,7 @@ const NOTES = {
 function renderRow(e) {
   const now = new Date();
   const l = e.latest;
-  const parts = [];
-  if (e.crons?.length) parts.push(e.crons.map((c) => describeCron(c, { now })).join(", "));
-  else if (l) parts.push(l.event === "schedule" ? "Scheduled" : `On ${l.event.replace(/_/g, " ")}`);
+  const parts = leadParts(e, now);
   if (e.note === "missed" && e.expectedAt) parts.push(`was due ${formatWhen(e.expectedAt, now)}`);
   else if (NOTES[e.note]) parts.push(NOTES[e.note]);
   else if (l) {

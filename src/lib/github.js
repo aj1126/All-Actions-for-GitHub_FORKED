@@ -1,11 +1,15 @@
 // Minimal GitHub REST client for the extension. The token is only ever sent to api.github.com.
 
-import { sinceDate, summarizeRepoRuns, applySchedules, expectedRunAt, firstFailedStep, MISSED_GRACE_MS } from "./runs.js";
+import {
+  sinceDate, summarizeRepoRuns, applySchedules, expectedRunAt, firstFailedStep, MISSED_GRACE_MS, RUN_PAGE_LIMIT, scopeOf,
+} from "./runs.js";
 import { extractCrons } from "./cron.js";
 
 const API = "https://api.github.com";
 
 export class TokenError extends Error {}
+/** A URL (for example a Link header's next page) that isn't on api.github.com: the token isn't sent. */
+export class OriginError extends Error {}
 export class RateLimitError extends Error {
   constructor(message, resetAt) {
     super(message);
@@ -34,6 +38,7 @@ async function request(token, path, params = {}, { http = null, keep = (d) => d 
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);
   }
+  if (url.origin !== API) throw new OriginError(`Refused to send the token to ${url.origin}: only ${API} is allowed.`);
   const key = url.toString();
   const hit = http?.prev[key];
   const res = await fetch(url, {
@@ -92,25 +97,47 @@ export async function listRepos(token, http = null) {
 
 // Only the run fields the page uses, so the saved ETag cache stays small.
 const RUN_FIELDS = ["id", "workflow_id", "name", "path", "event", "head_branch", "status", "conclusion",
-  "created_at", "run_started_at", "updated_at", "html_url"];
+  "created_at", "run_started_at", "updated_at", "html_url", "run_attempt"];
 const keepRuns = (data) => ({
-  workflow_runs: (data.workflow_runs ?? []).map((r) => Object.fromEntries(RUN_FIELDS.map((f) => [f, r[f]]))),
+  workflow_runs: (data.workflow_runs ?? []).map((r) => ({
+    ...Object.fromEntries(RUN_FIELDS.map((f) => [f, r[f]])),
+    actor_login: r.actor?.login ?? null,
+    triggering_login: r.triggering_actor?.login ?? null,
+  })),
 });
 
-/** One call per repo: recent runs, optionally scheduled ones only. */
-export async function listRecentRuns(token, repo, { scheduledOnly, days, now = new Date(), http = null }) {
-  const { data } = await request(
+/**
+ * One call per repo: recent scheduled runs. `full` means GitHub had more than this page, so a
+ * schedule missing from it may still have run.
+ */
+export async function listScheduledRuns(token, repo, { days, now = new Date(), http = null }) {
+  const { data, next } = await request(
     token,
     `/repos/${repo.full_name}/actions/runs`,
-    {
-      per_page: 100,
-      created: `>=${sinceDate(now, days)}`,
-      event: scheduledOnly ? "schedule" : undefined,
-      exclude_pull_requests: true,
-    },
+    { per_page: 100, created: `>=${sinceDate(now, days)}`, event: "schedule", exclude_pull_requests: true },
     { http, keep: keepRuns },
   );
-  return data.workflow_runs ?? [];
+  return { runs: data.workflow_runs ?? [], full: Boolean(next) };
+}
+
+/**
+ * Recent runs of any event, optionally only those of `actor`, up to RUN_PAGE_LIMIT pages.
+ * `capped` means there were more pages than were read.
+ */
+export async function listRunPages(token, repo, { days, now = new Date(), http = null, actor }) {
+  const runs = [];
+  let page = await request(
+    token,
+    `/repos/${repo.full_name}/actions/runs`,
+    { per_page: 100, created: `>=${sinceDate(now, days)}`, actor, exclude_pull_requests: true },
+    { http, keep: keepRuns },
+  );
+  runs.push(...(page.data.workflow_runs ?? []));
+  for (let n = 1; page.next && n < RUN_PAGE_LIMIT; n++) {
+    page = await request(token, page.next, {}, { http, keep: keepRuns });
+    runs.push(...(page.data.workflow_runs ?? []));
+  }
+  return { runs, capped: Boolean(page.next) };
 }
 
 /** Workflows defined in a repo, with their enabled/disabled state. */
@@ -172,18 +199,23 @@ const isFatal = (e) => e instanceof TokenError || e instanceof RateLimitError;
  *
  * `scheduleCache` holds cron lines read from workflow files (they rarely change), and
  * `previous` is the last snapshot, reused for failing-step names of runs already seen.
- * Returns the snapshot plus the updated cache.
+ * `scope` is "scheduled", "mine" (needs `login`, the token's user) or "all"; older callers
+ * pass `scheduledOnly` instead. Returns the snapshot plus the updated cache.
  */
 export async function loadSnapshot(
   token,
   {
-    scheduledOnly = true, days = 14, grace = MISSED_GRACE_MS, onProgress, previous = null, scheduleCache = {}, httpCache = {},
+    scope, scheduledOnly, login = "", days = 14, grace = MISSED_GRACE_MS, onProgress, previous = null, scheduleCache = {},
+    httpCache = {},
   } = {},
 ) {
   const now = new Date();
   const windowStart = new Date(now.getTime() - days * 86400000);
+  const watch = scopeOf({ scope, scheduledOnly });
   const http = new HttpCache(httpCache);
+  if (watch === "mine" && !login) login = (await getUser(token)).login;
   const repos = await listRepos(token, http);
+  const capped = [];
   const cache = {};
   const knownSteps = new Map(
     (previous?.entries ?? []).filter((e) => e.latest && "failedStep" in e).map((e) => [e.latest.id, e.failedStep]),
@@ -228,22 +260,45 @@ export async function loadSnapshot(
       }
       if (!workflows.length) return []; // nothing to run, so no need to ask for runs
       const crons = await readCrons(repo, workflows);
-      // Watching scheduled workflows only, and we could read every workflow file: if none
-      // has a schedule there's nothing to show for this repo.
+      // We could read every workflow file and none has a schedule: no scheduled runs to ask for,
+      // and when watching scheduled workflows only, nothing to show for this repo.
       const unscheduled = (wf) => !wf.path?.startsWith(".github/workflows/") || crons[wf.path]?.length === 0;
-      if (scheduledOnly && workflows.every(unscheduled)) return [];
-      const runs = await listRecentRuns(token, repo, { scheduledOnly, days, now, http });
+      const hasSchedules = !workflows.every(unscheduled);
+      if (watch === "scheduled" && !hasSchedules) return [];
 
-      // A schedule that fires less often than the window covers: look further back.
+      // Scheduled runs always come from their own query, so other runs can't push them out.
+      const runs = [];
+      let full = false;
+      if (hasSchedules) {
+        const scheduled = await listScheduledRuns(token, repo, { days, now, http });
+        runs.push(...scheduled.runs);
+        full = scheduled.full;
+      }
+      let mine = [];
+      if (watch !== "scheduled") {
+        const other = await listRunPages(token, repo, { days, now, http, actor: watch === "mine" ? login : undefined });
+        if (other.capped) capped.push(repo.full_name);
+        if (watch === "all") {
+          const ids = new Set(runs.map((r) => r.id));
+          runs.push(...other.runs.filter((r) => !ids.has(r.id)));
+        } else {
+          mine = other.runs.filter((r) => r.event !== "schedule" && (r.triggering_login ?? r.actor_login) === login);
+        }
+      }
+
+      // A schedule missing from the scheduled runs: look further back when it fires less often
+      // than the window covers, or when the page was full and its run may be on a later page.
       const seen = new Set(runs.filter((r) => r.event === "schedule").map((r) => r.workflow_id));
       for (const wf of workflows) {
         const expected = crons[wf.path]?.length ? expectedRunAt(crons[wf.path], now, grace) : null;
-        if (!expected || expected >= windowStart || seen.has(wf.id) || wf.state !== "active") continue;
+        if (!expected || seen.has(wf.id) || wf.state !== "active") continue;
+        if (expected >= windowStart && !full) continue;
         const older = await lastScheduledRun(token, repo, wf.id, http);
         if (older) runs.push(older);
       }
 
       const entries = applySchedules(summarizeRepoRuns(repo, runs), repo, workflows, crons, now, grace);
+      entries.push(...summarizeRepoRuns(repo, mine, 10, { origin: "mine" }));
 
       for (const e of entries) {
         if (e.latest?.conclusion !== "failure") continue;
@@ -263,11 +318,12 @@ export async function loadSnapshot(
   return {
     snapshot: {
       fetchedAt: now.toISOString(),
-      scheduledOnly,
+      scope: watch,
       scheduleAccess,
       repoCount: repos.length,
       entries: results.flat(),
       errors,
+      capped: capped.sort(),
     },
     scheduleCache: cache,
     httpCache: http.toJSON(),

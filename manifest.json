@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "All Actions for GitHub",
   "short_name": "All Actions",
-  "version": "0.8.0",
+  "version": "0.8.0.1",
+  "version_name": "0.8.0 (AJ build 1)",
   "description": "An account-wide \"All actions\" view: see whether every repo's scheduled workflows ran and passed, on one page.",
   "homepage_url": "https://github.com/amorphose/All-Actions-for-GitHub",
   "icons": {
@@ -58,7 +59,8 @@
         "src/view.js",
         "src/view.css",
         "src/lib/runs.js",
-        "src/lib/cron.js"
+        "src/lib/cron.js",
+        "src/lib/viewstate.js"
       ],
       "matches": [
         "https://github.com/*"

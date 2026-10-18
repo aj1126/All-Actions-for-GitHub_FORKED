@@ -68,6 +68,7 @@ a:hover { text-decoration: underline; }
 .pagehead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .pagehead h1 { font-size: 24px; font-weight: 600; margin: 0; }
 .meta { color: var(--fg-muted); font-size: 13px; }
+.capnote { margin: 0; color: var(--fg-muted); font-size: 12px; }
 
 .btn {
   font: inherit; font-size: 13px; font-weight: 500; line-height: 20px;

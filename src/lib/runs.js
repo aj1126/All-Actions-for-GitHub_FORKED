@@ -1,12 +1,78 @@
 // Pure helpers for turning raw workflow runs into rows for the All actions page.
 // No browser or network APIs here, so everything is unit-testable in Node.
 
-import { previousFire } from "./cron.js";
+import { previousFire, describeCron } from "./cron.js";
 
 export { describeCron } from "./cron.js";
 
 export const STATES = ["failed", "missed", "running", "other", "passed"];
 export const ATTENTION = new Set(["failed", "missed"]);
+
+// What the page watches: scheduled workflows only (the default), scheduled workflows plus
+// runs the connected account started, or every workflow run.
+export const SCOPES = ["scheduled", "mine", "all"];
+
+/** The scope of saved settings or a snapshot; older ones only have `scheduledOnly`. */
+export function scopeOf(saved) {
+  if (SCOPES.includes(saved?.scope)) return saved.scope;
+  return saved?.scheduledOnly === false ? "all" : "scheduled";
+}
+
+export const SCOPE_TEXT = {
+  scheduled: {
+    meta: "Scheduled workflows",
+    empty: "No scheduled workflow runs in the last 14 days in the repositories this token can see.",
+  },
+  mine: {
+    meta: "Scheduled workflows and runs you started",
+    empty: "No scheduled workflow runs or runs you started in the last 14 days in the repositories this token can see.",
+  },
+  all: {
+    meta: "All workflows",
+    empty: "No workflow runs in the last 14 days in the repositories this token can see.",
+  },
+};
+
+// Pages of 100 runs read per repo for "mine" and "all" before stopping.
+export const RUN_PAGE_LIMIT = 5;
+
+const TRIGGERS = {
+  schedule: "Scheduled",
+  push: "Push",
+  pull_request: "Pull request",
+  pull_request_target: "Pull request",
+  workflow_dispatch: "Manual run",
+};
+
+/** "Push", "Manual run (re-run)" and so on, from a row's latest run. */
+export function triggerLabel(latest) {
+  const event = latest?.event || "";
+  let label = TRIGGERS[event] ?? (event ? event[0].toUpperCase() + event.slice(1).replace(/_/g, " ") : "Unknown trigger");
+  if ((latest?.attempt ?? 1) > 1) label += " (re-run)";
+  return label;
+}
+
+/** The first parts of a row's second line: its schedule, and what started the latest run. */
+export function leadParts(e, now) {
+  const l = e.latest;
+  if (e.origin === "mine") return l ? ["Started by you", triggerLabel(l)] : ["Started by you"];
+  const parts = [];
+  if (e.crons?.length) parts.push(e.crons.map((c) => describeCron(c, { now })).join(", "));
+  if (l && (!e.crons?.length || l.event !== "schedule")) parts.push(triggerLabel(l));
+  return parts;
+}
+
+/** The note under the list when some repositories had more runs than were read. */
+export function capNote(capped) {
+  if (!capped?.length) return "";
+  const n = capped.length;
+  return `Stopped at the newest ${RUN_PAGE_LIMIT * 100} runs in ${n} ${n === 1 ? "repository" : "repositories"} (${capped.join(", ")}). Older runs from the last 14 days aren't shown.`;
+}
+
+/** Problems to notify about: rows for runs you started follow `notifyMine`, the rest `notify`. */
+export function pickProblems(problems, { notify, notifyMine }) {
+  return problems.filter((e) => (e.origin === "mine" ? Boolean(notifyMine) : Boolean(notify)));
+}
 
 // GitHub often starts scheduled runs late, especially at the top of the hour, so a run
 // only counts as missed once it's this late. People can pick 1 to 12 hours in Settings.
@@ -35,8 +101,10 @@ export function classify(run) {
 /**
  * Group one repo's runs by workflow, newest first.
  * Returns one entry per workflow with the latest run and recent history.
+ * With `origin: "mine"` the entries are rows for runs you started, kept apart from the
+ * scheduled rows of the same workflow.
  */
-export function summarizeRepoRuns(repo, runs, historySize = 10) {
+export function summarizeRepoRuns(repo, runs, historySize = 10, { origin = null } = {}) {
   const byWorkflow = new Map();
   for (const run of runs) {
     const list = byWorkflow.get(run.workflow_id) ?? [];
@@ -50,7 +118,8 @@ export function summarizeRepoRuns(repo, runs, historySize = 10) {
     const latest = list[0];
     const lastScheduled = list.find((r) => r.event === "schedule");
     entries.push({
-      key: `${repo.full_name}#${workflowId}`,
+      key: origin === "mine" ? `${repo.full_name}#${workflowId}#mine` : `${repo.full_name}#${workflowId}`,
+      ...(origin ? { origin } : {}),
       repo: {
         fullName: repo.full_name,
         name: repo.name,
@@ -68,6 +137,7 @@ export function summarizeRepoRuns(repo, runs, historySize = 10) {
         id: latest.id,
         url: latest.html_url,
         event: latest.event,
+        attempt: latest.run_attempt ?? 1,
         branch: latest.head_branch,
         status: latest.status,
         conclusion: latest.conclusion,

@@ -1,9 +1,18 @@
 import { loadSnapshot, TokenError, RateLimitError } from "./lib/github.js";
-import { getToken, getSettings, getSnapshot, setSnapshot, updateBadge } from "./lib/storage.js";
-import { newProblems, newPasses, graceMs } from "./lib/runs.js";
+import {
+  getToken, getLogin, getSettings, getSnapshot, setSnapshot, updateBadge, lockDownStorage, syncViewState, setRefreshState,
+} from "./lib/storage.js";
+import { newProblems, newPasses, graceMs, pickProblems } from "./lib/runs.js";
 
 export const VIEW_URL = "https://github.com/?all-actions";
 const REFRESH_MINUTES = 30;
+
+// Every time the worker starts: close storage.local (the token) to content scripts, then give
+// the github.com view its copy of the results in storage.session.
+const ready = (async () => {
+  await lockDownStorage();
+  await syncViewState();
+})();
 
 let running = null;
 
@@ -13,31 +22,31 @@ function refresh() {
   running = (async () => {
     const token = await getToken();
     if (!token) return;
-    const { scheduledOnly, notify, notifyPass, missedAfterHours } = await getSettings();
+    const { scope, notify, notifyPass, notifyMine, missedAfterHours } = await getSettings();
+    const login = await getLogin();
     const previous = await getSnapshot();
     const { scheduleCache = {}, httpCache = {} } = await chrome.storage.local.get(["scheduleCache", "httpCache"]);
-    await chrome.storage.local.set({ refreshState: { running: true, done: 0, total: 0, at: Date.now() } });
+    await setRefreshState({ running: true, done: 0, total: 0, at: Date.now() });
     try {
       const result = await loadSnapshot(token, {
-        scheduledOnly,
+        scope,
+        login,
         grace: graceMs(missedAfterHours),
         previous,
         scheduleCache,
         httpCache,
-        onProgress: (done, total) => chrome.storage.local.set({ refreshState: { running: true, done, total, at: Date.now() } }),
+        onProgress: (done, total) => setRefreshState({ running: true, done, total, at: Date.now() }),
       });
       await chrome.storage.local.set({ scheduleCache: result.scheduleCache, httpCache: result.httpCache });
       await setSnapshot(result.snapshot);
       if (previous?.fetchedAt) {
-        if (notify) await notifyProblems(newProblems(previous, result.snapshot));
+        if (notify || notifyMine) await notifyProblems(pickProblems(newProblems(previous, result.snapshot), { notify, notifyMine }));
         if (notifyPass) await notifyPasses(newPasses(previous, result.snapshot));
       }
-      await chrome.storage.local.set({ refreshState: { running: false } });
+      await setRefreshState({ running: false });
     } catch (e) {
       const kind = e instanceof TokenError ? "token" : e instanceof RateLimitError ? "rate" : "other";
-      await chrome.storage.local.set({
-        refreshState: { running: false, error: { kind, message: e.message, resetAt: e.resetAt ?? null } },
-      });
+      await setRefreshState({ running: false, error: { kind, message: e.message, resetAt: e.resetAt ?? null } });
     }
   })().finally(() => {
     running = null;
@@ -93,6 +102,8 @@ chrome.action.onClicked.addListener(() => {
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "refresh") refresh();
   if (message?.type === "open-settings") chrome.runtime.openOptionsPage();
+  // A view that found storage.session empty (after a browser restart) asks for its copy.
+  if (message?.type === "sync-view") ready.then(syncViewState);
 });
 
 // Check in the background so the badge stays current.
@@ -103,7 +114,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 async function setUp() {
   await chrome.alarms.create("refresh", { periodInMinutes: REFRESH_MINUTES });
   // A refresh interrupted by a browser restart would otherwise look stuck.
-  await chrome.storage.local.set({ refreshState: { running: false } });
+  await setRefreshState({ running: false });
+  await chrome.storage.local.remove("refreshState"); // where 0.8.0 kept it; it lives in storage.session now
   await updateBadge(await getSnapshot());
 }
 

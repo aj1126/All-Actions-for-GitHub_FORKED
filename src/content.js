@@ -257,9 +257,11 @@
     updateBadges();
   }
 
-  chrome.storage.local.get("snapshot").then(({ snapshot }) => setFromSnapshot(snapshot));
+  // storage.session: the background worker's copy for content scripts (storage.local is closed
+  // to them). It can be empty or still closed right after a browser restart.
+  chrome.storage.session.get("snapshot").then(({ snapshot }) => setFromSnapshot(snapshot)).catch(() => {});
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.snapshot) setFromSnapshot(changes.snapshot.newValue);
+    if (area === "session" && changes.snapshot) setFromSnapshot(changes.snapshot.newValue);
   });
 
   // GitHub renders the header menu lazily and swaps pages without full reloads,
